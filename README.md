@@ -1,19 +1,15 @@
-# epoll based pub sub model file/folder watcher 
- It is a Non blocking edge triggered epoll based single threaded server 
-  that watches files and can send event to multiple subscribers and
-  can take commands on seperate server(it is feeling good to use seperate server so i use)
+# File Watcher
 
+Linux C++ Publisher-Subscriber system based on a single-threaded, non-blocking, edge triggered epoll event loop. Currently implemented using file/folder watchers as publishers, supports many different publisher/subscriber types.
 
-*   **Central Event Loop**: `epollManager.runEventLoop` central event loop that calls corresponding handler on fd request.
-*   **Pub-Sub Model**: it is using publish subscriber model to add files/folders to list and use subscriber to recieve evetns.
-*   ** concurrent behaviour**: due to use of non blocking with epoll edge trigger ,it can simulate concurency with single thread
- ## Some Caveats are still there
-*   **Client Management**: Client objects are currently managed directly via `epollObject.data.ptr`.
-*   **Cleanup Mechanism**: Proper cleanup and resource deallocation are handled implicitly based on EPOLLRDHUP and epollerrorevents using callback lambda functions (handlers) to safely remove these objects and prevent memory leaks.
- 
-## Build Instructions
-   use release build to remove debug statements as they use NDEBUG macro to condition on flags
-   
-    be happy live your life.
+Highlights
 
-    test file is not written by me  (i prefer socat to test)
+- Publish-Subscribe Architecture - enables publishers to be separated from subscribers and to have many subscribers to a single publisher.
+- File/Folder Publisher - listens for filesystem activity and publishes events.
+- Subscriber Support – intended for user/client subscribers that subscribe to have events delivered from publishers.
+- Event-Driven Read Operations - Event-driven Read Operations. Use non-blocking file descriptors with epoll to process several clients from 1 thread.
+EPOLL - 21 - 7.8 The epoll API Edge-Triggered epoll - uses EPOLLET for event-driven processing.
+- Event Handling: The call to epollManager.runEventLoop() returns the handle(s) to which the event was sent.
+- Work with multiple Clients - supports more than one client using single server Thread.
+- Independent Command Server - separates the handling of command from the event-processing layer.
+-  Resource Management - manages client lifecycle and cleanup, events such as EPOLLRDHUP and EPOLLERR.
