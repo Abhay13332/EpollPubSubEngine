@@ -521,7 +521,7 @@ class Watcher :public EpollSatisfy<Watcher>{
    while(true){
       debug::print("came to inotify");
      ssize_t bytesRead=::read(inotifyfd.get(),buffer.data(),buffer.size()) ;
-     if(bytesRead==-1 && (errno==EWOULDBLOCK || errno==EWOULDBLOCK )){
+     if(bytesRead==-1 && (errno==EWOULDBLOCK || errno==EAGAIN )){
       debug::print("nothing to read"); 
       return;
        

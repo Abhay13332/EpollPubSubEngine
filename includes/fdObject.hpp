@@ -4,6 +4,7 @@
 #include <string>
 #include <unistd.h>
 #include <utility> 
+
 namespace FileWatcherSystem{
     namespace epollFlags {
         class EpollModFlags;
@@ -63,6 +64,7 @@ namespace FileWatcherSystem{
         virtual void write(std::string )=0;
     };
 inline FileWatcherSystem::Controller::~Controller() = default;
+
 class FileDesc{
     int fd=-1;
     public:
@@ -83,7 +85,7 @@ class FileDesc{
         }
         return* this;
     };
-    [[nodiscard]] explicit operator int()const{
+    [[nodiscard]]  explicit operator int()const{
         return fd;
     }
     [[nodiscard]] int get(){
@@ -94,8 +96,6 @@ class FileDesc{
          close(fd);
         }
     }
-
-
 };
 
 

@@ -71,36 +71,36 @@ public:
        if(bytesRead==-1 && (errno!=EWOULDBLOCK && errno!=EAGAIN)){
            switch (errno) {
             case EINTR:
-                // System call was interrupted by a signal before any data was read.
-                // Depending on your architecture, you might want to retry instead of throwing.
+                
+                
                 throw std::runtime_error("Read interrupted by signal: " + std::string(std::to_string(errno)));
 
             case ECONNRESET:
-                // The remote peer forced a connection close (e.g., crashed or sent a RST packet).
+                
                 throw std::runtime_error("Connection reset by peer: " + std::string(std::to_string(errno)));
 
             case ETIMEDOUT:
-                // Transmission timeout occurred on the underlying network connection.
+                
                 throw std::runtime_error("Connection timed out: " + std::string(std::to_string(errno)));
 
             case EBADF:
-                // clientfd is not a valid file descriptor or is not open for reading.
+                
                 throw std::runtime_error("Invalid or closed file descriptor: " + std::string(std::to_string(errno)));
 
             case EFAULT:
-                // buffer.data() points outside your accessible address space.
+                
                 throw std::runtime_error("Buffer memory fault: " + std::string(std::to_string(errno)));
 
             case EINVAL:
-                // The file descriptor is unsuitable for reading.
+                
                 throw std::runtime_error("Invalid argument for read operation: " + std::string(std::to_string(errno)));
 
             case EIO:
-                // Low-level I/O error occurred.
+                
                 throw std::runtime_error("Physical I/O error: " + std::string(std::to_string(errno)));
 
             default:
-                // Fallback for any other system error.
+                
                 throw std::runtime_error("Fatal read error: " + std::string(std::to_string(errno)));
         }
        }
@@ -124,7 +124,7 @@ public:
     }
     int pos=0;
     ssize_t bytesWrite=0;
-    std:std::string_view contentView(WriteDataBuffremain);
+    std::string_view contentView(WriteDataBuffremain);
     while(pos+bytesWrite<WriteDataBuffremain.size() && (bytesWrite=::write(clientfd.get(), contentView.substr(pos).data(), contentView.substr(pos).size()))>0 ){
         pos+=bytesWrite;
     }
@@ -134,33 +134,33 @@ public:
     }
     if(bytesWrite==-1){
         switch (errno) {
-        // Recoverable or signal-based write interruptions
-        case EINTR:        // The write was interrupted by a signal before any data was written
+        
+        case EINTR:        
             throw std::runtime_error("Write interrupted by signal: " + std::string(std::to_string(errno)));
 
-        // Connection failure states
-        case EPIPE:        // The reading side of the socket has closed (causes a SIGPIPE signal unless masked)
-        case ECONNRESET:   // The connection was forcibly reset by the remote peer
+        
+        case EPIPE:        
+        case ECONNRESET:   
             throw std::runtime_error("Broken pipe or connection reset: " + std::string(std::to_string(errno)));
 
-        case ETIMEDOUT:    // The underlying network connection timed out during transmission
+        case ETIMEDOUT:    
             throw std::runtime_error("Write operation timed out: " + std::string(std::to_string(errno)));
 
-        // Resource and boundary failures
-        case ENOSPC:       // The device containing the file system or socket buffer has no room
+        
+        case ENOSPC:       
             throw std::runtime_error("No space left on device/buffer: " + std::string(std::to_string(errno)));
 
-        // Invalid file descriptor or state errors
-        case EBADF:        // clientfd is not a valid open file descriptor for writing
+        
+        case EBADF:        
             throw std::runtime_error("Invalid or closed write file descriptor: " + std::string(std::to_string(errno)));
 
-        case EINVAL:       // File descriptor is unsuitable for writing or invalid alignment
+        case EINVAL:       
             throw std::runtime_error("Invalid argument for write operation: " + std::string(std::to_string(errno)));
 
-        case EFAULT:       // Buffer points outside your accessible address space
+        case EFAULT:       
             throw std::runtime_error("Memory fault in write buffer pointer: " + std::string(std::to_string(errno)));
 
-        // Catch-all for other rare system errors
+        
         default:
             throw std::runtime_error("Fatal write error: " + std::string(std::to_string(errno)));
     }
@@ -188,33 +188,32 @@ public:
     }
        if(bytesWrite==-1){
         switch (errno) {
-        // Recoverable or signal-based write interruptions
-        case EINTR:        // The write was interrupted by a signal before any data was written
+        
+        case EINTR:        
             throw std::runtime_error("Write interrupted by signal: " + std::string(std::to_string(errno)));
 
-        // Connection failure states
-        case EPIPE:        // The reading side of the socket has closed (causes a SIGPIPE signal unless masked)
-        case ECONNRESET:   // The connection was forcibly reset by the remote peer
+        case EPIPE:        
+        case ECONNRESET:   
             throw std::runtime_error("Broken pipe or connection reset: " + std::string(std::to_string(errno)));
 
-        case ETIMEDOUT:    // The underlying network connection timed out during transmission
+        case ETIMEDOUT:    
             throw std::runtime_error("Write operation timed out: " + std::string(std::to_string(errno)));
 
-        // Resource and boundary failures
-        case ENOSPC:       // The device containing the file system or socket buffer has no room
+        
+        case ENOSPC:       
             throw std::runtime_error("No space left on device/buffer: " + std::string(std::to_string(errno)));
 
-        // Invalid file descriptor or state errors
-        case EBADF:        // clientfd is not a valid open file descriptor for writing
+        
+        case EBADF:        
             throw std::runtime_error("Invalid or closed write file descriptor: " + std::string(std::to_string(errno)));
 
-        case EINVAL:       // File descriptor is unsuitable for writing or invalid alignment
+        case EINVAL:       
             throw std::runtime_error("Invalid argument for write operation: " + std::string(std::to_string(errno)));
 
-        case EFAULT:       // Buffer points outside your accessible address space
+        case EFAULT:       
             throw std::runtime_error("Memory fault in write buffer pointer: " + std::string(std::to_string(errno)));
 
-        // Catch-all for other rare system errors
+        
         default:
             throw std::runtime_error("Fatal write error: " + std::string(std::to_string(errno)));
     }
@@ -231,6 +230,7 @@ public:
   SocketClient(SocketClient &&) = default;
   SocketClient &operator=(SocketClient &&) = default;
   int getFd() { return clientfd.get(); }
+  
 };
 class NBTcpSocket;
 struct EpollSocketDeleter {
@@ -287,7 +287,7 @@ class SkSubscriberController:public Controller{
            for(auto [cl,event]:getClientView()){
             cl->WriteDataBuffremain+=data;
           }
-        //  client->WriteDataBuffremain+=data;
+        
       }
 };
 class NBTcpSocket:public EpollSatisfy<NBTcpSocket>{
@@ -295,7 +295,7 @@ class NBTcpSocket:public EpollSatisfy<NBTcpSocket>{
     FileDesc socketFd;
     sockaddr_in address;
     int addrlen = sizeof(address);
-    char buffer[4096];
+    
 
     
 public:
@@ -415,35 +415,35 @@ public:
            
         if (clientfd == -1) {
     switch (errno) {
-        // Interrupted or aborted connections
-        case EINTR:        // System call was interrupted by a signal before a connection arrived
-        case ECONNABORTED: // A connection was aborted by the client before being accepted
+        
+        case EINTR:        
+        case ECONNABORTED: 
             throw std::runtime_error("Connection interrupted or aborted: " + std::string(std::to_string(errno)));
 
-        // Process or system resource limits
-        case EMFILE:       // Per-process limit on open file descriptors reached
-        case ENFILE:       // System-wide limit on total number of open files reached
+        
+        case EMFILE:       
+        case ENFILE:       
             throw std::runtime_error("File descriptor limit reached: " + std::string(std::to_string(errno)));
 
-        // Memory limitations
-        case ENOBUFS:      // Not enough free memory to allocate network buffers
-        case ENOMEM:       // Out of memory
+        
+        case ENOBUFS:      
+        case ENOMEM:       
             throw std::runtime_error("System memory exhausted: " + std::string(std::to_string(errno)));
 
-        // Invalid socket descriptors or states
-        case EBADF:        // socket_fd is not a valid open file descriptor
-        case ENOTSOCK:     // socket_fd descriptor references a file, not a socket
-        case EOPNOTSUPP:   // The referenced socket type is not supported (e.g., not SOCK_STREAM)
-        case EINVAL:       // Invalid flags passed or socket is not currently listening
+        
+        case EBADF:        
+        case ENOTSOCK:     
+        case EOPNOTSUPP:   
+        case EINVAL:       
             throw std::runtime_error("Invalid socket configuration: " + std::string(std::to_string(errno)));
 
-        // Security and memory fault restrictions
-        case EFAULT:       // client_addr pointer is outside the accessible address space
+        
+        case EFAULT:       
             throw std::runtime_error("Memory fault in client address pointer: " + std::string(std::to_string(errno)));
-        case EPERM:        // Firewall rules or local security policies block the connection
+        case EPERM:        
             throw std::runtime_error("Permission denied by firewall: " + std::string(std::to_string(errno)));
 
-        // Catch-all for unhandled exceptions
+        
         default:
             throw std::runtime_error("Fatal connection acceptance error: " + std::string(std::to_string(errno)));
     }

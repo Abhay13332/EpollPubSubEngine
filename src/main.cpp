@@ -20,7 +20,6 @@ int main(){
    SkSubscriberController skctl(subscriberH);
    
    EpollMan epollManager(10,epollFlags::createcloseonExec);
-   //leaks needs to be fix clients and epollClientObj for both server
 
    std::unique_ptr<EpollEvent> commandHandlerEpollObj(epollManager.createEventObj(&commandHandler).onReading([epollMan=&epollManager,wth=&inotifyWatcher](NBTcpSocket* serverSock,EpollEvent*){
        try{
