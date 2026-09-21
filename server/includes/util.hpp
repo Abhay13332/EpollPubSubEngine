@@ -12,7 +12,7 @@
     #define DEBUG_RUN(...) do { } while(0)
 #endif
 
-namespace FileWatcherSystem {
+namespace PubSubEngine {
 namespace debug {
 
     template <typename... Args>

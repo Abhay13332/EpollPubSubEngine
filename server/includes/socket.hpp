@@ -4,7 +4,6 @@
 #include <array>
 #include <expected>
 #include <functional>
-#include <iostream>
 #include <memory>
 #include <ranges>
 #include <string>
@@ -18,7 +17,7 @@
 #include<epoll.hpp>
 #include<fdObject.hpp>
 #include<util.hpp>
-namespace FileWatcherSystem {
+namespace PubSubEngine {
 namespace socketIO{
     class SocketModFlags{    
         

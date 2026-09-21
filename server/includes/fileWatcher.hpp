@@ -19,7 +19,7 @@
 #include<util.hpp>
 #include <vector>
 
-namespace FileWatcherSystem {
+namespace PubSubEngine {
 
 namespace ios {
 class OpenMode {
@@ -292,8 +292,8 @@ namespace Watchfs {
     constexpr  int inotifyEventSize = sizeof(struct inotify_event);
     constexpr static int bufferLen = 1024 * (inotifyEventSize + 16);
     class FileWatchFlags{
-      friend inline uint32_t FileWatcherSystem::operator&(uint32_t lhs, Watchfs::FileWatchFlags rhs);
-      friend inline uint32_t FileWatcherSystem::operator&=(uint32_t& lhs, Watchfs::FileWatchFlags rhs); 
+      friend inline uint32_t PubSubEngine::operator&(uint32_t lhs, Watchfs::FileWatchFlags rhs);
+      friend inline uint32_t PubSubEngine::operator&=(uint32_t& lhs, Watchfs::FileWatchFlags rhs); 
       const int val=-1;
       public:
       constexpr FileWatchFlags(int val):val(val){}
@@ -606,6 +606,6 @@ class Watcher :public EpollSatisfy<Watcher>{
 
 
 };
-} // namespace FileWatcherSystem
+} // namespace PubSubEngine
 #endif
 

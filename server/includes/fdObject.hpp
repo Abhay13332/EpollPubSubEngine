@@ -5,7 +5,7 @@
 #include <unistd.h>
 #include <utility> 
 
-namespace FileWatcherSystem{
+namespace PubSubEngine{
     namespace epollFlags {
         class EpollModFlags;
     }
@@ -63,7 +63,7 @@ namespace FileWatcherSystem{
         virtual std::string read()=0;
         virtual void write(std::string )=0;
     };
-inline FileWatcherSystem::Controller::~Controller() = default;
+inline PubSubEngine::Controller::~Controller() = default;
 
 class FileDesc{
     int fd=-1;

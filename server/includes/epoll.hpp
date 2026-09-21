@@ -15,7 +15,7 @@
 #include <unistd.h>
 #include <util.hpp>
 #include <vector>
-namespace FileWatcherSystem {
+namespace PubSubEngine {
 template <typename T>
 concept onlyDataObj = !std::is_pointer_v<T> && !std::is_reference_v<T> &&
                       (std::is_class_v<T> || std::is_fundamental_v<T>);
@@ -33,7 +33,7 @@ inline uint32_t operator&(uint32_t& lhs, epollFlags::EpollModFlags rhs);
 inline uint32_t operator&=(uint32_t& lhs, epollFlags::EpollModFlags rhs);
 namespace epollFlags {
 class EpollOpenFlags {
-    friend class FileWatcherSystem::EpollMan;
+    friend class PubSubEngine::EpollMan;
     static int getValue(const EpollOpenFlags& obj) {
         return obj.val;
     }
@@ -46,12 +46,12 @@ class EpollOpenFlags {
     }
 };
 class EpollModFlags {
-    friend class FileWatcherSystem::EpollMan;
-    template <onlyDataObj T> friend class FileWatcherSystem::EpollEventGen;
-    friend class FileWatcherSystem::EpollEvent;
-    friend uint32_t FileWatcherSystem::operator|=(uint32_t& lhs, epollFlags::EpollModFlags rhs);
-    friend uint32_t FileWatcherSystem::operator&(uint32_t& lhs, epollFlags::EpollModFlags rhs);
-    friend uint32_t FileWatcherSystem::operator&=(uint32_t& lhs, epollFlags::EpollModFlags rhs);
+    friend class PubSubEngine::EpollMan;
+    template <onlyDataObj T> friend class PubSubEngine::EpollEventGen;
+    friend class PubSubEngine::EpollEvent;
+    friend uint32_t PubSubEngine::operator|=(uint32_t& lhs, epollFlags::EpollModFlags rhs);
+    friend uint32_t PubSubEngine::operator&(uint32_t& lhs, epollFlags::EpollModFlags rhs);
+    friend uint32_t PubSubEngine::operator&=(uint32_t& lhs, epollFlags::EpollModFlags rhs);
 
     static int getValue(const EpollModFlags& obj) {
         return obj.val;
@@ -424,7 +424,7 @@ void printEpollFlags(uint32_t events) {
 } // namespace debug
 
 template <typename T>
-concept isEpollSatisfy = std::derived_from<T, FileWatcherSystem::EpollSatisfy<T>>;
+concept isEpollSatisfy = std::derived_from<T, PubSubEngine::EpollSatisfy<T>>;
 
 class EpollMan {
     FileDesc epollFd;
@@ -585,5 +585,5 @@ void EpollEventListenerModifier::modifyinEpoll() {
     this->epollMan->modifyEvent(this->event);
 }
 
-} // namespace FileWatcherSystem
+} // namespace PubSubEngine
 #endif
