@@ -12,7 +12,7 @@
     #define DEBUG_RUN(...) do { } while(0)
 #endif
 
-namespace PubSubEngine {
+namespace EpollInternals {
 namespace debug {
 
     template <typename... Args>
@@ -22,10 +22,6 @@ namespace debug {
         std::cout << std::endl;// NOLINT(performance-avoid-endl)
         );
     }
-  
-   
-
-
 }
 class NonBlockReadError:public std::exception{
      public:
@@ -48,7 +44,7 @@ class ScopeGuard{
    }
    ~ScopeGuard(){
       if (!dismissed ) {
-            action(); // Runs ONLY if dismiss() was never hit (i.e., on error/early return)
+            action(); 
         }
    }
 };

@@ -6,7 +6,10 @@ set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(GLOBAL_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/core/includes")
+set(GLOBAL_INCLUDE_DIR 
+${CMAKE_CURRENT_SOURCE_DIR}/core/includes
+${CMAKE_CURRENT_SOURCE_DIR}/external/includes
+)
 add_subdirectory(server)
 add_subdirectory(sdk)
 add_subdirectory(examples)

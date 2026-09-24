@@ -15,7 +15,7 @@
 #include <unistd.h>
 #include <util.hpp>
 #include <vector>
-namespace PubSubEngine {
+namespace EpollInternals {
 template <typename T>
 concept onlyDataObj = !std::is_pointer_v<T> && !std::is_reference_v<T> &&
                       (std::is_class_v<T> || std::is_fundamental_v<T>);
@@ -33,7 +33,7 @@ inline uint32_t operator&(uint32_t& lhs, epollFlags::EpollModFlags rhs);
 inline uint32_t operator&=(uint32_t& lhs, epollFlags::EpollModFlags rhs);
 namespace epollFlags {
 class EpollOpenFlags {
-    friend class PubSubEngine::EpollMan;
+    friend class EpollInternals::EpollMan;
     static int getValue(const EpollOpenFlags& obj) {
         return obj.val;
     }
@@ -46,12 +46,12 @@ class EpollOpenFlags {
     }
 };
 class EpollModFlags {
-    friend class PubSubEngine::EpollMan;
-    template <onlyDataObj T> friend class PubSubEngine::EpollEventGen;
-    friend class PubSubEngine::EpollEvent;
-    friend uint32_t PubSubEngine::operator|=(uint32_t& lhs, epollFlags::EpollModFlags rhs);
-    friend uint32_t PubSubEngine::operator&(uint32_t& lhs, epollFlags::EpollModFlags rhs);
-    friend uint32_t PubSubEngine::operator&=(uint32_t& lhs, epollFlags::EpollModFlags rhs);
+    friend class EpollInternals::EpollMan;
+    template <onlyDataObj T> friend class EpollInternals::EpollEventGen;
+    friend class EpollInternals::EpollEvent;
+    friend uint32_t EpollInternals::operator|=(uint32_t& lhs, epollFlags::EpollModFlags rhs);
+    friend uint32_t EpollInternals::operator&(uint32_t& lhs, epollFlags::EpollModFlags rhs);
+    friend uint32_t EpollInternals::operator&=(uint32_t& lhs, epollFlags::EpollModFlags rhs);
 
     static int getValue(const EpollModFlags& obj) {
         return obj.val;
@@ -77,7 +77,6 @@ class EpollModFlags {
         return val == oth.val;
     }
 };
-// Define this outside of your class definition
 
 const static EpollOpenFlags createcloseonExec = EPOLL_CLOEXEC;
 using csEms = EpollModFlags;
@@ -185,6 +184,7 @@ class EpollEvent {
         if (activeFlags & forWriteable) {
             constexpr int idx = static_cast<int>(gethandlerIndex(forWriteable));
             if (handler[idx]) {
+                handler[idx](data,this);
             }
         }
         if (activeFlags & forPriorityData) {
@@ -246,6 +246,7 @@ class EpollEvent {
 template <typename T> T* getDataEpollEvent(EpollEvent* event) {
     return static_cast<T*>(event->data);
 }
+
 class EpollEventListenerModifier {
     EpollEvent* event;
     EpollMan* epollMan;
@@ -318,12 +319,16 @@ template <onlyDataObj T> class EpollEventGen {
         : EpollManevent(new EpollEvent(events)), epoll(epoll) {}
     EpollEventGen(int fd, EpollMan* epoll) : EpollManevent(new EpollEvent(fd)), epoll(epoll) {}
     EpollEventGen(EpollMan* epoll) : EpollManevent(new EpollEvent()), epoll(epoll) {}
-
+    EpollEventGen(EpollEventGen&)=delete;
+    EpollEventGen& operator=(EpollEventGen&)=delete;
+    EpollEventGen(EpollEventGen&&)=default;
+    EpollEventGen& operator=(EpollEventGen&&)=default;
+    
   public:
     EpollEvent* addEvent();
     EpollEvent* modifyEvent();
     EpollEvent* deleteEvent();
-
+    
     EpollEventGen* addObject(void* data) {
         EpollManevent->data = data;
         return this;
@@ -424,8 +429,24 @@ void printEpollFlags(uint32_t events) {
 } // namespace debug
 
 template <typename T>
-concept isEpollSatisfy = std::derived_from<T, PubSubEngine::EpollSatisfy<T>>;
-
+concept isEpollSatisfy = std::derived_from<T, EpollInternals::EpollSatisfy<T>>;
+template<typename Func,typename objTp,typename ...CpArgs>
+concept EpollRegFuncaptIf=std::invocable<Func,objTp*,EpollEvent*,CpArgs...>;
+template<typename Func,typename T>
+concept EpollEvgenBuilder=std::invocable<Func, EpollEventGen<T>&>;
+class EUtil{
+    public:
+        template<onlyDataObj T,typename Func,typename... CpArgs>
+        requires EpollRegFuncaptIf<Func,T, CpArgs...>
+        static  std::move_only_function<void(T*, EpollEvent*)> deleg(Func&& function,CpArgs&& ...cpArgs){
+            return [fn=std::forward<Func>(function),cpTuple=std::make_tuple(std::forward<CpArgs>(cpArgs)...)]
+            (T* data, EpollEvent* epollEv)mutable{
+               std::apply([&fn,data,epollEv](auto&&... cpArgs)mutable{
+                    std::invoke(fn,data,epollEv,std::forward<decltype(cpArgs)>(cpArgs)...);
+               }, cpTuple);
+            };
+        };
+};
 class EpollMan {
     FileDesc epollFd;
     std::vector<epoll_event> events;
@@ -565,7 +586,18 @@ class EpollMan {
     }
     template <isEpollSatisfy T> EpollEventGen<T> createEventObj(T* fdObj) {
         std::pair<int, epollFlags::EpollModFlags> info = fdObj->getEpollInfo();
-        return *(EpollEventGen<T>(info.first, info.second, this).addObject(fdObj));
+        return std::move(*(EpollEventGen<T>(info.first, info.second, this).addObject(fdObj)));
+    }
+
+    template <isEpollSatisfy T,typename Func>
+    requires EpollEvgenBuilder<Func,T>
+     EpollEvent* createEventObjLinIF
+    (T* fdObj,Func builder) {
+        std::pair<int, epollFlags::EpollModFlags> info = fdObj->getEpollInfo();
+        EpollEventGen<T> epollGen(info.first, info.second, this);
+        epollGen.addObject(fdObj);
+        builder(epollGen);
+        return epollGen.addEvent();
     }
 };
 template <onlyDataObj T> EpollEvent* EpollEventGen<T>::addEvent() {
@@ -585,5 +617,7 @@ void EpollEventListenerModifier::modifyinEpoll() {
     this->epollMan->modifyEvent(this->event);
 }
 
-} // namespace PubSubEngine
+
+} // namespace EpollInternals
+
 #endif

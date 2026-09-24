@@ -17,7 +17,7 @@
 #include<epoll.hpp>
 #include<fdObject.hpp>
 #include<util.hpp>
-namespace PubSubEngine {
+namespace EpollInternals {
 namespace socketIO{
     class SocketModFlags{    
         
@@ -259,6 +259,7 @@ class SkSubscriberController:public Controller{
       void addsub(EpollEvent* event){
             subs.emplace_back(event);
       };
+      
       void deletesub(EpollEvent* event){
         subs.erase(std::remove_if(subs.begin(),subs.end(),[event](const std::unique_ptr<EpollEvent,EpollSocketDeleter>& cl){
             if(cl->getFd()==event->getFd()){
@@ -290,7 +291,6 @@ class SkSubscriberController:public Controller{
       }
 };
 class NBTcpSocket:public EpollSatisfy<NBTcpSocket>{
-    friend class SkSubscriberController;
     FileDesc socketFd;
     sockaddr_in address;
     int addrlen = sizeof(address);

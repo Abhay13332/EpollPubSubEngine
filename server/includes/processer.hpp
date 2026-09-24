@@ -1,6 +1,6 @@
 #ifndef PROCESSOR_HPP
 #define PROCESSOR_HPP
-#include "fileWatcher.hpp"
+#include <fileWatcherandpub.hpp>
 #include "socket.hpp"
 #include <format>
 #include <stdexcept>
@@ -9,7 +9,7 @@
 #include <sys/types.h>
 #include <variant>
 
-namespace PubSubEngine {
+namespace EpollInternals {
 enum class methods : std::int8_t {
     ADD,
     REMOVE,
@@ -187,7 +187,7 @@ class ProtocolProcessor {
             if (data.substr(9, 5) == "FILE ") {
                 std::string path = strip(data.substr(14));
                 if (!wth->haslareadyFile(path)) {
-                    PubSubEngine::File fs(path, ios::readWrite, S_IRWXU);
+                    EpollInternals::File fs(path, ios::readWrite, S_IRWXU);
                     wth->addFile(std::move(fs), Watchfs::file::accessForRead |
                                                     Watchfs::file::fileDeleted |
                                                     Watchfs::file::modified |
@@ -203,7 +203,7 @@ class ProtocolProcessor {
                std::string path=strip(data.substr(15));
                if(!wth->haslareadyFolder(path)){
 
-                  PubSubEngine::Folder fl(path);
+                  EpollInternals::Folder fl(path);
                   wth->addFolder(std::move(fl),
                   Watchfs::dir::fileMovedin | Watchfs::dir::fileMovedout |
                   Watchfs::dir::fileCreated | Watchfs::dir::filedeleted |

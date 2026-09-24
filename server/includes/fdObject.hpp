@@ -5,7 +5,7 @@
 #include <unistd.h>
 #include <utility> 
 
-namespace PubSubEngine{
+namespace EpollInternals{
     namespace epollFlags {
         class EpollModFlags;
     }
@@ -63,7 +63,7 @@ namespace PubSubEngine{
         virtual std::string read()=0;
         virtual void write(std::string )=0;
     };
-inline PubSubEngine::Controller::~Controller() = default;
+inline EpollInternals::Controller::~Controller() = default;
 
 class FileDesc{
     int fd=-1;

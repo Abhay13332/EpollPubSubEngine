@@ -6,13 +6,13 @@
 #include <memory>
 #include<socket.hpp>
 #include<fdObject.hpp>
-#include<fileWatcher.hpp>
+#include<fileWatcherandpub.hpp>
 #include<processer.hpp>
 #include <stdexcept>
 #include <sys/types.h>
 #include <variant>
 int main(){
-   using namespace PubSubEngine;
+   using namespace EpollInternals;
    NBTcpSocket commandHandler(4001,10);
    NBTcpSocket subscriberH(4002,10);
    
@@ -20,7 +20,10 @@ int main(){
    SkSubscriberController skctl(subscriberH);
    
    EpollMan epollManager(10,epollFlags::createcloseonExec);
-
+  
+//    std::unique_ptr<EpollEvent> cobj(epollManager.createEventObjLinIF(&commandHandler,[](EpollEventGen<NBTcpSocket>& obj){
+                  
+//    }));
    std::unique_ptr<EpollEvent> commandHandlerEpollObj(epollManager.createEventObj(&commandHandler).onReading([epollMan=&epollManager,wth=&inotifyWatcher](NBTcpSocket* serverSock,EpollEvent*){
        try{
            std::expected<SocketClient,NonBlockReadError> clientexp=serverSock->getClient();
