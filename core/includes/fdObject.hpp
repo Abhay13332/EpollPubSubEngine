@@ -5,14 +5,19 @@
 #include <unistd.h>
 #include <utility> 
 
-namespace EpollInternals{
-    namespace epollFlags {
-        class EpollModFlags;
-    }
+namespace EpollInternals::epollFlags {
+    class EpollModFlags;
+}
+namespace FDEPOLLRL{
     class EpollMan;
     template<typename T>
     concept hasEpollSatisfyFunc=requires (T obj) {
-        {obj.getEpollInfo()}->std::same_as<std::pair<int,epollFlags::EpollModFlags>>;
+        {obj.getEpollInfo()}->std::same_as<std::pair<int,EpollInternals::epollFlags::EpollModFlags>>;
+        
+    };
+    template<typename T>
+    concept hasEpollSatisfyRDHFunc=requires (T obj) {
+        {obj.isWriteComplete()}->std::same_as<bool>;
         
     };
     template<typename Derived>
@@ -25,10 +30,7 @@ namespace EpollInternals{
         EpollSatisfy(EpollSatisfy&)=delete;
         EpollSatisfy &operator=(EpollSatisfy&)=delete;
         EpollSatisfy(EpollSatisfy&&)=default;
-        EpollSatisfy &operator=(EpollSatisfy&&)=default;
-
-
-        
+        EpollSatisfy &operator=(EpollSatisfy&&)=default;   
     };
     template<typename T>
     concept satistfyRdhup=requires (T obj) {
@@ -40,7 +42,7 @@ namespace EpollInternals{
         public:
         bool isEpollRdHup=false;
         EpollSatisfyRDH():EpollSatisfy<Derived>(){
-            
+            static_assert(hasEpollSatisfyRDHFunc<Derived>,"class do not implementisWriteComplete" ); 
         }
         EpollSatisfyRDH(EpollSatisfyRDH&&)=default;
         EpollSatisfyRDH &operator=(EpollSatisfyRDH&&)=default;
@@ -63,7 +65,7 @@ namespace EpollInternals{
         virtual std::string read()=0;
         virtual void write(std::string )=0;
     };
-inline EpollInternals::Controller::~Controller() = default;
+inline Controller::~Controller() = default;
 
 class FileDesc{
     int fd=-1;

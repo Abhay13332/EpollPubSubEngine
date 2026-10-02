@@ -22,3 +22,8 @@ Diagnostics:
       # Variables and Parameters -> camelCase
       readability-identifier-naming.VariableCase: camelBack
       readability-identifier-naming.ParameterCase: camelBack
+  If:
+    PathMatch: external/.*
+
+  Diagnostics:
+    Suppress: ["*"]

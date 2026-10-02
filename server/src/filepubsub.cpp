@@ -13,11 +13,13 @@
 #include <variant>
 int main(){
    using namespace EpollInternals;
+   using namespace FileWatcherPubSub;
+   using namespace socketIO;
    NBTcpSocket commandHandler(4001,10);
    NBTcpSocket subscriberH(4002,10);
    
    Watcher inotifyWatcher(Watchfs::init::closeOnExec|Watchfs::init::nonBLockMode);
-   SkSubscriberController skctl(subscriberH);
+   SkfileSubscriberController skctl(subscriberH);
    
    EpollMan epollManager(10,epollFlags::createcloseonExec);
   
@@ -30,7 +32,7 @@ int main(){
 
            if(clientexp.has_value()){
             SocketClient *client=new SocketClient(std::move(clientexp.value()));
-            debug::print("client",client->getFd());
+            ::debug::print("client",client->getFd());
             epollMan->createEventObj(client).onReading([epollMan,wth](SocketClient* cl,EpollEvent* clEventObj ){
 
                 try {
@@ -97,20 +99,20 @@ int main(){
                         });
                     }); 
                 }catch(const std::runtime_error& e){
-                    debug::print(e.what());
+                    ::debug::print(e.what());
                  }
-            },false)->onHalfClose([](SocketClient* sc,EpollEvent*event){
-                event->setCleanup();
+            },false)->onHalfClose([epollMan](SocketClient* cl,EpollEvent*cleventObj){
+               cleventObj->setCleanup();
             })
             ->onCleanup([](SocketClient* sc,EpollEvent*event){
                     delete sc;
                     delete event;
-                    debug::print("onCleanup");
+                    ::debug::print("onCleanup");
                  })
             ->addEvent();
          }
     }catch(const std::exception& e){
-                    debug::print(e.what());
+                  ::debug::print(e.what());
      }
    })->addEvent());
 
@@ -120,7 +122,7 @@ int main(){
 
          if(clientexp.has_value()){
             SocketClient *client=new SocketClient(std::move(clientexp.value()));
-            debug::print("get sub");
+            ::debug::print("get sub");
             EpollEvent* eventObj=epollMan->createEventObj(client).onWrite([epollMan](SocketClient* cl,EpollEvent*cleventObj){
                  try{
                    auto res= cl->write().transform([cleventObj,epollMan](){
@@ -132,14 +134,14 @@ int main(){
                         });
                     }); 
                 }catch(const std::runtime_error& e){
-                    debug::print(e.what());
+                    ::debug::print(e.what());
                  }
             },false)->
             onHalfClose([](SocketClient*,EpollEvent*event){
                   event->setCleanup();
 
             })->onCleanup([skctl](SocketClient*sc,EpollEvent*event){
-                debug::print("cleanup");
+                ::debug::print("cleanup");
                  skctl->deletesub(event);
 
             })->addEvent();
@@ -147,7 +149,7 @@ int main(){
 
          }
     }catch(std::exception e){
-        debug::print(e.what());
+        ::debug::print(e.what());
     }
    })->addEvent());
 

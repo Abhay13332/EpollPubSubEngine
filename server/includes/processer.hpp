@@ -8,8 +8,57 @@
 #include <string_view>
 #include <sys/types.h>
 #include <variant>
+#include<ranges>
+namespace FileWatcherPubSub {
+   class SkfileSubscriberController:public ::FDEPOLLRL::Controller{
+     
+     std::vector<std::unique_ptr<EpollInternals::EpollEvent,socketIO::EpollSocketDeleter>> subs;
+     socketIO::NBTcpSocket& socket;
+    public:
+      SkfileSubscriberController(socketIO::NBTcpSocket& socket,int defaultClientCount=10):Controller(),socket(socket){
+        subs.reserve(defaultClientCount);
+      }
+      ~SkfileSubscriberController()override=default;
+      
+      auto getClientView(){
+         return   subs | std::views::transform([](const std::unique_ptr<EpollInternals::EpollEvent,socketIO::EpollSocketDeleter>& cl) {
+             return std::pair<socketIO::SocketClient*,EpollInternals::EpollEvent*>(getDataEpollEvent<socketIO::SocketClient>(cl.get()),cl.get());
+        });
+      }
+      void addsub(EpollInternals::EpollEvent* event){
+            subs.emplace_back(event);
+      };
+      
+      void deletesub(EpollInternals::EpollEvent* event){
+        subs.erase(std::remove_if(subs.begin(),subs.end(),[event](const std::unique_ptr<EpollInternals::EpollEvent,socketIO::EpollSocketDeleter>& cl){
+            if(cl->getFd()==event->getFd()){
+                return true;
+            }
+         return false;
+        }),subs.end());
+      }
 
-namespace EpollInternals {
+      
+      void writeToclients(std::move_only_function<void(socketIO::SocketClient*,EpollInternals::EpollEvent*)> whenBlock){
+         for(auto [cl,event]:getClientView()){
+           if(!cl->write()){
+              whenBlock(cl,event); 
+           }; 
+        }
+      }
+      std::string read()override{
+            std::runtime_error("should not read from subs");
+            return "";
+      }
+      void write(std::string data)override{
+       
+
+           for(auto [cl,event]:getClientView()){
+            cl->WriteDataBuffremain+=data;
+          }
+        
+      }
+};
 enum class methods : std::int8_t {
     ADD,
     REMOVE,
@@ -147,7 +196,7 @@ namespace ProtocolState{
    }
 class ProtocolProcessor {
   public:
-    static ProtocolState::ValidateData validate(SocketClient* cl) {
+    static ProtocolState::ValidateData validate(socketIO::SocketClient* cl) {
      try{
         int stpos=0;
         if(cl->ReadDataBuff[0]=='\n')stpos++;
@@ -174,7 +223,7 @@ class ProtocolProcessor {
         return ProtocolState::InvalidSizeBytes();
      }
     }
-    static ProtocolState::processResult process( SocketClient* cl, int dataSize,int stpos,
+    static ProtocolState::processResult process( socketIO::SocketClient* cl, int dataSize,int stpos,
                                                        Watcher* wth) {
         
         int upto = dataSize+5;
@@ -187,7 +236,7 @@ class ProtocolProcessor {
             if (data.substr(9, 5) == "FILE ") {
                 std::string path = strip(data.substr(14));
                 if (!wth->haslareadyFile(path)) {
-                    EpollInternals::File fs(path, ios::readWrite, S_IRWXU);
+                    File fs(path, ios::readWrite, S_IRWXU);
                     wth->addFile(std::move(fs), Watchfs::file::accessForRead |
                                                     Watchfs::file::fileDeleted |
                                                     Watchfs::file::modified |
@@ -203,7 +252,7 @@ class ProtocolProcessor {
                std::string path=strip(data.substr(15));
                if(!wth->haslareadyFolder(path)){
 
-                  EpollInternals::Folder fl(path);
+                  Folder fl(path);
                   wth->addFolder(std::move(fl),
                   Watchfs::dir::fileMovedin | Watchfs::dir::fileMovedout |
                   Watchfs::dir::fileCreated | Watchfs::dir::filedeleted |
@@ -245,7 +294,7 @@ class ProtocolProcessor {
         }  
         return ProtocolState::InvalidMainCommand();
     }
-    static void flush(SocketClient* cl, int upto=-1,int stpos=0) {
+    static void flush(socketIO::SocketClient* cl, int upto=-1,int stpos=0) {
          //   std::cout<<
         if (upto == 0)
             return;

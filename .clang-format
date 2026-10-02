@@ -1,23 +1,20 @@
----
-# Define the baseline style to extend (e.g., LLVM, Google, Chromium, Mozilla, WebKit, Microsoft)
-BasedOnStyle: LLVM
-
-# Language target
 Language: Cpp
-
-# Indentation configuration
-IndentWidth: 4
+BasedOnStyle: LLVM
+IndentWidth:6
 TabWidth: 4
 UseTab: Never
 
-# Code layout rules
-ColumnLimit: 100
-AllowShortFunctionsOnASingleLine: Empty
-FixNamespaceComments: true
-SortIncludes: true
+# Outdents public/private/protected relative to the class indentation
+AccessModifierOffset: -2
 
-# Alignment settings
-AlignConsecutiveAssignments: false
-AlignConsecutiveDeclarations: false
+# Aligns pointers to the type (e.g., Subscriber*)
 PointerAlignment: Left
-...
+ReferenceAlignment: Right
+
+# Spacing rules based on your examples (e.g., spaces inside parentheses)
+SpacesInParentheses: true
+SpaceBeforeParens: Always
+AllowShortFunctionsOnASingleLine: All
+AllowShortClassesOnASingleLine: false
+BreakBeforeBraces: Attach
+ColumnLimit: 100

@@ -1,9 +1,10 @@
 #include<fileWatcherandpub.hpp>
 int main(){
     using namespace EpollInternals;
-    EpollInternals::Watcher newwth(Watchfs::init::nonBLockMode);
+    using namespace FileWatcherPubSub;
+    Watcher newwth(Watchfs::init::nonBLockMode);
     std::string path="/home/abhay/project/multifileeventlistener/demonstration/hello.txt";
-    EpollInternals::File fs(path, ios::readWrite, S_IRWXU);
+    File fs(path, ios::readWrite, S_IRWXU);
     newwth.addFile(std::move(fs), Watchfs::file::accessForRead |
       Watchfs::file::modified |
       Watchfs::file::fileDeleted |

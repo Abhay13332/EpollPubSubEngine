@@ -15,6 +15,8 @@
 #include <unistd.h>
 #include <util.hpp>
 #include <vector>
+#include<coro.hpp>
+#include <memory> 
 namespace EpollInternals {
 template <typename T>
 concept onlyDataObj = !std::is_pointer_v<T> && !std::is_reference_v<T> &&
@@ -242,6 +244,12 @@ class EpollEvent {
     void setCleanup() {
         readyForClean = true;
     }
+    // EpollEvent(EpollEvent&&)=default;
+    ~EpollEvent(){
+        if(handler.back()) {
+            handler.back()(data, this);
+        };
+    }
 };
 template <typename T> T* getDataEpollEvent(EpollEvent* event) {
     return static_cast<T*>(event->data);
@@ -252,8 +260,8 @@ class EpollEventListenerModifier {
     EpollMan* epollMan;
 
   public:
-    EpollEventListenerModifier(EpollEvent* event, EpollMan* epollMan) : event(event) {
-        if (event == nullptr || epollMan == nullptr) {
+    EpollEventListenerModifier(EpollEvent* event,EpollMan* epollMan) : event(event) ,epollMan(epollMan){
+        if (this->event == nullptr || this->epollMan == nullptr) {
             throw std::invalid_argument(
                 "Pointer cannot be null in EpollEventListenerModifier constructor");
         }
@@ -309,7 +317,7 @@ class EpollEventListenerModifier {
     void modifyinEpoll();
 };
 template <onlyDataObj T> class EpollEventGen {
-    EpollEvent* EpollManevent;
+    std::unique_ptr<EpollEvent> EpollManevent;
     EpollMan* epoll;
 
     friend class EpollMan;
@@ -394,7 +402,7 @@ template <onlyDataObj T> class EpollEventGen {
         assignHandler(gethandlerIndex(epollFlags::forEpollErr), std::move(handler));
         return this;
     }
-
+  
   private:
     void assignHandler(handlerIndex target,
                        std::move_only_function<void(T*, EpollEvent*)> handler) {
@@ -411,7 +419,7 @@ template <onlyDataObj T> class EpollEventGen {
 
     // static Edge
 };
-namespace debug {
+
 
 void printEpollFlags(uint32_t events) {
     DEBUG_RUN(std::cout << "Bitmask " << events << " contains:\n";
@@ -426,10 +434,9 @@ void printEpollFlags(uint32_t events) {
               if (events & EPOLLONESHOT) std::cout << "  - EPOLLONESHOT\n";);
 }
 
-} // namespace debug
 
 template <typename T>
-concept isEpollSatisfy = std::derived_from<T, EpollInternals::EpollSatisfy<T>>;
+concept isEpollSatisfy = std::derived_from<T, FDEPOLLRL::EpollSatisfy<T>>;
 template<typename Func,typename objTp,typename ...CpArgs>
 concept EpollRegFuncaptIf=std::invocable<Func,objTp*,EpollEvent*,CpArgs...>;
 template<typename Func,typename T>
@@ -448,7 +455,7 @@ class EUtil{
         };
 };
 class EpollMan {
-    FileDesc epollFd;
+    FDEPOLLRL::FileDesc epollFd;
     std::vector<epoll_event> events;
 
   public:
@@ -504,7 +511,7 @@ class EpollMan {
             }
             for (int i = 0; i < eventCount; i++) {
                 EpollEvent* eventData = static_cast<EpollEvent*>(events[i].data.ptr);
-                (debug::printEpollFlags(events[i].events));
+                (printEpollFlags(events[i].events));
                 eventData->runEvent(events[i].events);
             }
         }
@@ -602,22 +609,27 @@ class EpollMan {
 };
 template <onlyDataObj T> EpollEvent* EpollEventGen<T>::addEvent() {
 
-    this->epoll->addEvent(this->EpollManevent);
-    return this->EpollManevent;
+    this->epoll->addEvent(this->EpollManevent.get());
+    return this->EpollManevent.release();
 }
 template <onlyDataObj T> EpollEvent* EpollEventGen<T>::modifyEvent() {
-    this->epoll->modifyEvent(this->EpollManevent);
-    return this->EpollManevent;
+    this->epoll->modifyEvent(this->EpollManevent.get());
+    
+    return this->EpollManevent.release();
 }
 template <onlyDataObj T> EpollEvent* EpollEventGen<T>::deleteEvent() {
-    this->epoll->deleteEvent(this->EpollManevent);
-    return this->EpollManevent;
+    this->epoll->deleteEvent(this->EpollManevent.get());
+    
+    return this->EpollManevent.release();
 }
 void EpollEventListenerModifier::modifyinEpoll() {
     this->epollMan->modifyEvent(this->event);
 }
+namespace EpDef{
 
-
+    template <typename T>
+    using EEG=EpollEventGen<T>;
+}
 } // namespace EpollInternals
 
 #endif

@@ -12,7 +12,6 @@
     #define DEBUG_RUN(...) do { } while(0)
 #endif
 
-namespace EpollInternals {
 namespace debug {
 
     template <typename... Args>
@@ -22,6 +21,17 @@ namespace debug {
         std::cout << std::endl;// NOLINT(performance-avoid-endl)
         );
     }
+    
+}
+
+namespace logging {
+
+    template <typename... Args>
+    static void print( Args&&... args) {
+        ((std::cout << std::forward<Args>(args)), ...);
+        std::cout << '\n'; 
+    }
+    
 }
 class NonBlockReadError:public std::exception{
      public:
@@ -52,6 +62,6 @@ class ScopeGuard{
 template<class... Ts> struct Overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> Overloaded(Ts...) -> Overloaded<Ts...>;
 
-}
+
 
 #endif

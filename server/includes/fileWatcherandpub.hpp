@@ -19,7 +19,7 @@
 #include<util.hpp>
 #include <vector>
 
-namespace EpollInternals {
+namespace FileWatcherPubSub {
 
 namespace ios {
 class OpenMode {
@@ -94,7 +94,7 @@ public:
 
 };
 class File {
-  FileDesc fileFd;
+  FDEPOLLRL::FileDesc fileFd;
   std::filesystem::path path;
   int flags;
   int mode;
@@ -292,8 +292,8 @@ namespace Watchfs {
     constexpr  int inotifyEventSize = sizeof(struct inotify_event);
     constexpr static int bufferLen = 1024 * (inotifyEventSize + 16);
     class FileWatchFlags{
-      friend inline uint32_t EpollInternals::operator&(uint32_t lhs, Watchfs::FileWatchFlags rhs);
-      friend inline uint32_t EpollInternals::operator&=(uint32_t& lhs, Watchfs::FileWatchFlags rhs); 
+      friend inline uint32_t FileWatcherPubSub::operator&(uint32_t lhs, Watchfs::FileWatchFlags rhs);
+      friend inline uint32_t FileWatcherPubSub::operator&=(uint32_t& lhs, Watchfs::FileWatchFlags rhs); 
       const int val=-1;
       public:
       constexpr FileWatchFlags(int val):val(val){}
@@ -381,8 +381,8 @@ class Folder{
 
 
 };
-class Watcher :public EpollSatisfy<Watcher>{
-  FileDesc inotifyfd;
+class Watcher :public FDEPOLLRL::EpollSatisfy<Watcher>{
+  FDEPOLLRL::FileDesc inotifyfd;
   std::unordered_map<int, File> filemap;
   std::unordered_map<int, Folder> foldermap;
   std::vector<char> buffer;
@@ -410,8 +410,8 @@ class Watcher :public EpollSatisfy<Watcher>{
     inotifyfd = res;
     
   }
-  std::pair<int,epollFlags::EpollModFlags> getEpollInfo(){
-      return {inotifyfd.get(),epollFlags::forEdgeTriggered};
+  std::pair<int,EpollInternals::epollFlags::EpollModFlags> getEpollInfo(){
+      return {inotifyfd.get(),EpollInternals::epollFlags::forEdgeTriggered};
   }
 
   Watcher(Watcher &) = delete;
@@ -517,7 +517,7 @@ class Watcher :public EpollSatisfy<Watcher>{
     this->foldermap.insert({watchDesc,std::move(folder)});
   }
   
-  void eventListener(Controller* client){
+  void eventListener(FDEPOLLRL::Controller* client){
    while(true){
       debug::print("came to inotify");
      ssize_t bytesRead=::read(inotifyfd.get(),buffer.data(),buffer.size()) ;
@@ -539,7 +539,7 @@ class Watcher :public EpollSatisfy<Watcher>{
     }
   }
 
-  void process(Controller* client,ssize_t length){
+  void process(FDEPOLLRL::Controller* client,ssize_t length){
     debug::print("came to process",length);
      ssize_t i=0;
      using namespace Watchfs;
