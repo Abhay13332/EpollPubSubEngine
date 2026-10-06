@@ -34,7 +34,7 @@ void sub(){
             auto tpc=randomTopicGen();
             subTpc.insert(tpc);
             sub.addTopic(tpc, pr);
-            debug::print("add  tpc ",tpc);
+            std::cout <<"add  tpc "<<tpc<< std::endl;;
         }
 
         sleep(3);
@@ -42,7 +42,7 @@ void sub(){
             auto tpc=randomTopicGen();
             subTpc.erase(tpc);
             sub.removeTopic(tpc);
-            debug::print("remove  tpc ",tpc);
+            std::cout <<"remove  tpc "<<tpc<< std::endl;
 
         }
     }

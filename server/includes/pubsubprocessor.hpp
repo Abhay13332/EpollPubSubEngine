@@ -197,7 +197,6 @@ class TokenList{
                 tkList.addTkn(Tokentype::MSGIS);
                 pos(6);
             }else if(tkList.Tkl.size()>0 && tkList.Tkl.back().ttp==Tokentype::MSGIS) {
-                debug::print("in msg reading");
                 std::string decodedData=base64::from_base64(st.substr(pos(0)));
                 tkList.addTkn(Tokentype::MSG,decodedData);
                 pos(st.size()-pos(0));
@@ -334,7 +333,6 @@ class PSProtocol{
                 auto cmdExp=CommandProcessor::getCmd(tkListexp.value());
                 if(!cmdExp.has_value())return cmdExp.error();
                 auto cmd=std::move(cmdExp.value());
-                debug::print(magic_enum::enum_name(cmd->tp));
                 if(cmd->tp!=CommandTp::SUBCREATE && cmd->tp!=CommandTp::PUBCREATE) return protoState::NotInitialized();
                 if(cmd->tp==CommandTp::SUBCREATE) return std::make_unique<Subscriber>(skcl,pubSubMgr);
                 return std::make_unique<Publisher>(skcl,pubSubMgr);
@@ -360,7 +358,6 @@ class PSProtocol{
 
             return std::visit(Overloaded{
                 [cl,sub](protoState::DataArrived& dataInfo)->protoState::CommandStatus{
-                    debug::print("receiver:"+cl->ReadDataBuff.substr(dataInfo.stPos,dataInfo.size));
                     auto tkListexp=getTknMove(cl,dataInfo);
                     if(!tkListexp)return protoState::InvalidProtoMSG("invalid token");
                     auto cmdExp=CommandProcessor::getCmd((tkListexp.value()));

@@ -89,7 +89,10 @@ class BlSocketClient{
             while(pos+bytesWrite<cmd.size()  ){
                 bytesWrite=::write(fd.get(), contentView.substr(pos).data(), contentView.substr(pos).size());
                 if(bytesWrite==-1 && (errno == EINTR))continue;
-                if(bytesWrite==-1 && (errno == EPIPE || errno == ECONNRESET))throw std::runtime_error("server disconnected");
+                if(bytesWrite==-1 && (errno == EPIPE || errno == ECONNRESET)){
+                    Logging::errorDef("server disconnect unexpectedly");
+                    throw std::runtime_error("server disconnected ");
+                }
                 pos+=bytesWrite;
             }
             
@@ -100,9 +103,15 @@ class BlSocketClient{
             int remaining=4;
             while(remaining ){
                 int bytesRead=::read(fd.get(), buffer.data(),remaining);
-                if(bytesRead==0)throw std::runtime_error("server disconnected ");
+                if(bytesRead==0){
+                    Logging::infoDef("server disconnect");
+                    throw std::runtime_error("server disconnected ");
+                }
                 if(bytesRead==-1 && (errno == EINTR))continue;
-                if(bytesRead==-1 && (errno == EPIPE || errno == ECONNRESET))throw std::runtime_error("server disconnected");
+                if(bytesRead==-1 && (errno == EPIPE || errno == ECONNRESET)){
+                    Logging::errorDef("server disconnect unexpectedly");
+                    throw std::runtime_error("server disconnected ");
+                }
                 remaining-=bytesRead;
             };
             int totalSize=CommandConstruct::getSize(std::string_view(buffer).substr(0,4));
@@ -138,10 +147,15 @@ class AppPubSubIF{
     public:
         Status checkStatus(){
             auto resp=ResponseProcessor::getCmd(cl.readUntilSize());
-            if(!resp.has_value())return Status(500);
+
+            if(!resp.has_value()){
+                Logging::infoDef("unexpected server response");
+                return Status(500);
+            }
             if(Status* st=dynamic_cast<Status*>(resp->get())){
                 return st->status;
             }
+            Logging::infoDef("unexpected server response");
             return Status(500);
             
         }
@@ -162,10 +176,10 @@ class AppSubsCriber:public AppPubSubIF<AppSubsCriber>{
             auto resp=std::move(respExp.value());
             
             if(Status* status=dynamic_cast<Status*>(resp.get())){
-                logging::print("getting response status:",status->status);
+                std::cout << "getting response status:"<<status->status;
                 
             }else if(ListTpc* list=dynamic_cast<ListTpc*>(resp.get())){
-                logging::print("topics",list->list);
+                std::cout << "getting response status:"<<status->status;
             }else if(TopicMsgCmd* msgCmd=dynamic_cast<TopicMsgCmd*>(resp.get())){
                 std::shared_ptr<std::move_only_function<void(std::string)>> cb=nullptr;
                 threadSfMap.if_contains(msgCmd->topic, [&cb](const auto& pair){
@@ -198,9 +212,9 @@ class AppSubsCriber:public AppPubSubIF<AppSubsCriber>{
         }
         void runBgThread(){
             if(isBgSt.test_and_set()){
-                logging::print("try to run again pub thread");
+                Logging::infoDef("try to run again pub thread");
             }
-            logging::print("thread started successfully");
+            Logging::infoDef("thread started successfully");
             BgThread=std::thread(&AppSubsCriber::readLoop,this);
         }
         ~AppSubsCriber(){

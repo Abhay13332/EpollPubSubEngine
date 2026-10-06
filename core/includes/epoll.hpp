@@ -479,7 +479,7 @@ class EUtil{
 class EpollMan {
     FDEPOLLRL::FileDesc epollFd;
     std::vector<epoll_event> events;
-
+    bool runningLoop=true;
   public:
     EpollMan(const size_t maxEvents = 10, const epollFlags::EpollOpenFlags val = 0) {
 
@@ -507,11 +507,10 @@ class EpollMan {
     EpollMan& operator=(EpollMan&) = delete;
     EpollMan(EpollMan&&) = default;
     EpollMan& operator=(EpollMan&&) = default;
-
     void runEventLoop() {
         int i = 0;
         // int totale=0;
-        while (true) {
+        while (runningLoop) {
 
             int eventCount = epoll_wait(epollFd.get(), events.data(), events.size(), -1);
             // totale+=eventCount;
@@ -521,8 +520,8 @@ class EpollMan {
                 case EBADF:
                     throw std::runtime_error("Invalid epoll file descriptor");
                 case EINTR:
-                    throw std::runtime_error("The call was interrupted by a signal handler "
-                                             "before any events were available");
+                    eventCount=0;
+                    break;
                 case EINVAL:
                     throw std::runtime_error("The epoll file descriptor is not valid or "
                                              "maxevents is less than or equal to zero");
@@ -536,8 +535,10 @@ class EpollMan {
                 (printEpollFlags(events[i].events));
                 eventData->runEvent(events[i].events);
             }
-            debug::print("runloop");
         }
+    }
+    void stopLoop(){
+        runningLoop=false;
     }
     void addEvent(EpollEvent* epollEvent) {
         int res = epoll_ctl(epollFd.get(), EPOLL_CTL_ADD, epollEvent->fdRef, &epollEvent->event);

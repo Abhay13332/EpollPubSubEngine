@@ -2,6 +2,7 @@
 #include<socket.hpp>
 #include<pubsub.hpp>
 #include<pubsubprocessor.hpp>
+#include <csignal>
 using namespace EpollInternals;
 using namespace PubSubEngine;
 using namespace socketIO;
@@ -10,10 +11,10 @@ while(true){
 
     try{
       if(!cl->skc->read())break;
-      debug::print("reciever:",cl->skc->ReadDataBuff,":end");
-      debug::print("reciever len:",cl->skc->ReadDataBuff.length());
+  
 
       if(!cl->pubSubObj){
+        Logging::infoDef("initilaizing client to pub or sub");
         auto pubsubVar=PSProtocol::assignType(cl,pubSubMgr);
         bool isAssignSuccess=std::visit(Overloaded{
           [cl](std::unique_ptr<PubsubIF>& ps){
@@ -25,13 +26,12 @@ while(true){
           requires IsOneof<T, protoState::InvalidProtoMSG,
              protoState::NotInitialized>
            {
-              debug::print(inValidMsg.info());
+              Logging::warnDef("Invalid Command From Client");
               cl->writeAsync(PSProtocol::responseStatus(404));
               cl->skc->resetReadBuff();
               return false;
           },
           [](auto& oth){
-              debug::print(oth.info());
               return false;
           }
             
@@ -42,7 +42,6 @@ while(true){
       auto commandRes=PSProtocol::processPSIFcmd(cl->skc.get(), cl->pubSubObj.get());
       bool cmdStatus=std::visit(Overloaded{
           [cl](protoState::CommandProcessed&val){
-              debug::print(val.info());
               cl->writeAsync(PSProtocol::responseStatus(val.getStatus()));
               return true;
           },
@@ -52,16 +51,15 @@ while(true){
           },
           [cl]<typename T>(T& inValidMsg)
           requires IsOneof<T, protoState::InvalidProtoMSG,
-              protoState::InvalidPubCmd,
-              protoState::InvalidSubCmd>{
-            debug::print(inValidMsg.info());
-            cl->skc->resetReadBuff();
-            cl->writeAsync(PSProtocol::responseStatus(404));
+            protoState::InvalidPubCmd,
+            protoState::InvalidSubCmd>{
+              cl->skc->resetReadBuff();
+              Logging::warnDef("Invalid Command From Client");
+              cl->writeAsync(PSProtocol::responseStatus(404));
               return false;
 
           },
           [cl](auto& val){
-            debug::print(val.info());
             return false;
           },
       },commandRes);
@@ -69,23 +67,23 @@ while(true){
         break;
       } 
     }catch(std::exception &e){
-      debug::print(e.what());
+      Logging::errorDef("exception in client read:",e.what());
       cl->skc->resetReadBuff();
       break;
     }
-  debug::print("in Process loop");
+  
 
   }
-  debug::print("exit Process loop");
+
   try{
-    debug::print("send:",cl->skc->WriteDataBuffremain,":end");
+
     auto res=cl->skc->write();
     if(!res.has_value()){
       EpollEventListenerModifier(epObj,epollMgr).enableWriteEvent()->modifyinEpoll();
     }
-    debug::print("write complete");
   }catch(std::exception &e){
-      debug::print(e.what()); 
+  Logging::errorDef("exception in client write:",e.what());
+
   }
 
 
@@ -108,10 +106,10 @@ void onHalfClose(Skcl* cl,EpollEvent* epObj,EpollMan* epollMgr){
     }
 }
 void onTermStatus(Skcl* cl,EpollEvent* epObj){
-    debug::print("on term status");
     epObj->setCleanup();
 }
 void onCleanup(Skcl* cl,EpollEvent* epObj,SkClientCentralSt* st){
+    Logging::infoDef("client disconnected");
     if(Subscriber* sub=dynamic_cast<Subscriber*>(cl->pubSubObj.get())){
       sub->cleanUpUnsub();
     }  
@@ -119,19 +117,14 @@ void onCleanup(Skcl* cl,EpollEvent* epObj,SkClientCentralSt* st){
 }
 
 void onServRead(NBTcpSocket* skt, EpollEvent*,EpollMan* epollMgr,SkClientCentralSt* st,PubSubMan* pubSubMgr){
-      debug::print("trying to connect to client");
   try{
       auto cle=skt->getClient();
       
       if(!cle.has_value())return;
       auto clptr=Skcl(std::make_unique<SocketClient>(std::move(cle.value())));
-      
-      debug::print("client accepted");
       auto *cl=st->addCl(std::move(clptr));
-      debug::print("setting  Skcl obj ");
-
+      Logging::infoDef("new client connected");
       auto epollev=(epollMgr->createEventObjLinIF(cl,([epollMgr,st,pubSubMgr](EpDef::EEG<Skcl>& bl)mutable{
-            debug::print("settting client events");
 
             bl.onReading(EUtil::deleg<Skcl>(onClientRead,epollMgr,pubSubMgr));
             bl.onWrite(EUtil::deleg<Skcl>(onClientWrite,epollMgr),false);
@@ -144,18 +137,28 @@ void onServRead(NBTcpSocket* skt, EpollEvent*,EpollMan* epollMgr,SkClientCentral
     //   auto cl=store.
       
     }catch(std::exception& e){
-        debug::print(e.what());
+      Logging::errorDef("exception in client connection:",e.what());
+      
     }
 }
 int main(){
-   
+  
+  Logging::Logger logger("pubsub.txt");
+  Logging::setDefaultLogger(logger);
+  NBTcpSocket pubsub(3000,20);
+  EpollMan epollMgr(10,epollFlags::createcloseonExec);
+  PubSubMan pubSubMgr;
+  static EpollMan* stEpollMgrRef = &epollMgr;
 
-    NBTcpSocket pubsub(3000,20);
-    EpollMan epollMgr(10,epollFlags::createcloseonExec);
-    PubSubMan pubSubMgr;
-    SkClientCentralSt skclState(&epollMgr);
-    epollMgr.createEventObjLinIF(&pubsub, 
-      [epollMgrRef=&epollMgr,skclStateRef=&skclState,pubSubMgrRef=&pubSubMgr](EpDef::EEG<NBTcpSocket> &bld ){
+  std::signal(SIGINT, [](int val){
+    if (stEpollMgrRef) {
+        stEpollMgrRef->stopLoop();
+        std::cout << "waiting until stop loop";
+    }
+  });
+  SkClientCentralSt skclState(&epollMgr);
+  epollMgr.createEventObjLinIF(&pubsub, 
+    [epollMgrRef=&epollMgr,skclStateRef=&skclState,pubSubMgrRef=&pubSubMgr](EpDef::EEG<NBTcpSocket> &bld ){
             bld.onReading(EUtil::deleg<NBTcpSocket>(onServRead,epollMgrRef,skclStateRef,pubSubMgrRef));
     });
     

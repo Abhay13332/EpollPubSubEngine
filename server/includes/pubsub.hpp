@@ -73,7 +73,6 @@ namespace PubSubEngine{
         cls.reserve(maxClients);
     };
     Skcl* addCl(Skcl&& cl){
-        debug::print("in addCl");
         cl.idx=cls.size();
         cl.epollMan=epollMan;
         cls.push_back(std::make_unique<Skcl>(std::move(cl)));
@@ -81,7 +80,6 @@ namespace PubSubEngine{
     }
     
     void removeCl(Skcl* cl){
-        debug::print("in RemoveCl");
         if(cl->idx==-1)return;
         int currIdx=cl->idx;
         cls.back()->idx=currIdx;
@@ -267,7 +265,6 @@ namespace PubSubEngine{
         void removeSub(Subscriber* sub){
             for(auto &[key,Tpctl]:subs){
                   Tpctl.removeSub(sub);
-                  debug::print("in remove Sub");
             }
             
         }

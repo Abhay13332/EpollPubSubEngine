@@ -161,7 +161,6 @@ class ResponseProcessor{
                 auto tk1=tklist.Tkl[0].ttp;
                 auto tk2=tklist.Tkl[1].ttp;
                 if((tk1==Tokentype::STATUS && tk2==Tokentype::STVAL) ){
-                    debug::print("status type response");
                     return std::make_unique<Status>(
                         (stoi(tklist.Tkl[1].data)));
                 }
@@ -185,7 +184,7 @@ class ResponseProcessor{
         } 
         static  std::expected<std::unique_ptr<Response>,protoState::InvalidProtoMSG> getCmd(const std::string_view resp ){
                 auto tkList=TokenList::getTkList(resp);
-                
+                 
                 if(tkList.has_value()){
                     return getCmd(tkList.value());
 

@@ -14,7 +14,7 @@ int main(){
             std::cin>> tpc;
             // NOLINTNEXTLINE(performance-unnecessary-value-param)
             sub.addTopic(tpc,[](const std::string msg){
-                std::cout << msg << std::endl;
+                std::cout << "get msg:"+msg << std::endl;
             });
         }else if(n==2){
             std::string tpc;

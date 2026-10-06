@@ -105,8 +105,6 @@ public:
         mode(ios::OpenMode::getValue(mode)) {
     // fd=open(path,)//
     // auto ty=std::ios::app;
-   
-    debug::print("path",path);
     fileFd = openat(AT_FDCWD,path.c_str(), this->flags, this->mode);
     if (fileFd.get() == -1) {
       switch (errno) {
@@ -519,10 +517,8 @@ class Watcher :public FDEPOLLRL::EpollSatisfy<Watcher>{
   
   void eventListener(FDEPOLLRL::Controller* client){
    while(true){
-      debug::print("came to inotify");
      ssize_t bytesRead=::read(inotifyfd.get(),buffer.data(),buffer.size()) ;
      if(bytesRead==-1 && (errno==EWOULDBLOCK || errno==EAGAIN )){
-      debug::print("nothing to read"); 
       return;
        
       }
@@ -540,7 +536,6 @@ class Watcher :public FDEPOLLRL::EpollSatisfy<Watcher>{
   }
 
   void process(FDEPOLLRL::Controller* client,ssize_t length){
-    debug::print("came to process",length);
      ssize_t i=0;
      using namespace Watchfs;
      while(i<length){
@@ -594,8 +589,6 @@ class Watcher :public FDEPOLLRL::EpollSatisfy<Watcher>{
             eventName = "Unknown File Event";
         }        
           client->write(std::format("EventInfo:\n\t filepath: {}\n\t event {}\n", file.getPath(), eventName));
-          
-
       }
       i+=(inotifyEventSize)+event->len;
      }
