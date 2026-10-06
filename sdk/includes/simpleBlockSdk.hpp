@@ -176,10 +176,10 @@ class AppSubsCriber:public AppPubSubIF<AppSubsCriber>{
             auto resp=std::move(respExp.value());
             
             if(Status* status=dynamic_cast<Status*>(resp.get())){
-                std::cout << "getting response status:"<<status->status;
+                std::cout << "getting response status:"<<status->status<<"\n";
                 
             }else if(ListTpc* list=dynamic_cast<ListTpc*>(resp.get())){
-                std::cout << "getting response status:"<<status->status;
+                std::cout << "getting response status:"<<status->status<< "\n";
             }else if(TopicMsgCmd* msgCmd=dynamic_cast<TopicMsgCmd*>(resp.get())){
                 std::shared_ptr<std::move_only_function<void(std::string)>> cb=nullptr;
                 threadSfMap.if_contains(msgCmd->topic, [&cb](const auto& pair){
