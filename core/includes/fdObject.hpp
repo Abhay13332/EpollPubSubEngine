@@ -13,18 +13,20 @@ namespace FDEPOLLRL{
     template<typename T>
     concept hasEpollSatisfyFunc=requires (T obj) {
         {obj.getEpollInfo()}->std::same_as<std::pair<int,EpollInternals::epollFlags::EpollModFlags>>;
-        
+       
     };
     template<typename T>
     concept hasEpollSatisfyRDHFunc=requires (T obj) {
         {obj.isWriteComplete()}->std::same_as<bool>;
+
         
     };
     template<typename Derived>
     class EpollSatisfy{
         protected:
         EpollSatisfy(){
-            static_assert(hasEpollSatisfyFunc<Derived>,"class do not implement getEpollInfo" ); 
+            static_assert(hasEpollSatisfyFunc<Derived>,"class do not implement getEpollInfo " ); 
+        
         }
         public:
         EpollSatisfy(EpollSatisfy&)=delete;
@@ -35,14 +37,15 @@ namespace FDEPOLLRL{
     template<typename T>
     concept satistfyRdhup=requires (T obj) {
         {obj.isWriteComplete()}->std::same_as<bool>;
-     
+        {obj.terminationStatus()}->std::same_as<bool>;
     };
     template<typename Derived>
     class EpollSatisfyRDH:public EpollSatisfy<Derived>{
         public:
         bool isEpollRdHup=false;
         EpollSatisfyRDH():EpollSatisfy<Derived>(){
-            static_assert(hasEpollSatisfyRDHFunc<Derived>,"class do not implementisWriteComplete" ); 
+            static_assert(hasEpollSatisfyRDHFunc<Derived>,"class do not implementisWriteComplete or terminationStatus" ); 
+
         }
         EpollSatisfyRDH(EpollSatisfyRDH&&)=default;
         EpollSatisfyRDH &operator=(EpollSatisfyRDH&&)=default;

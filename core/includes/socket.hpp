@@ -17,6 +17,7 @@ namespace socketIO{
     class SocketModFlags{    
         
         int val;
+       
         public:
         static int getValue(const SocketModFlags& obj){return obj.val;}
            SocketModFlags(int val):val(val){}
@@ -42,14 +43,25 @@ namespace socketIO{
         csSMF ipv4Communication=AF_INET;
         csSMF ipv6Communication=AF_INET6;
         
-        class SocketClient:public  FDEPOLLRL::EpollSatisfyRDH<SocketClient>{
-  FDEPOLLRL::FileDesc clientfd = -1;
-  struct sockaddr_in clientAddr;
+class SocketClient:public  FDEPOLLRL::EpollSatisfyRDH<SocketClient>{
+    FDEPOLLRL::FileDesc clientfd = -1;
+    struct sockaddr_in clientAddr;
+    bool eofStatus=false;
+    bool terminatableError=false;
+    void setTerminateStatus(){
+        this->terminatableError=true;
+    }
+    void setEof(){
+         this->eofStatus=true;
+    }
   public:
-  SocketClient(int clientfd,sockaddr_in clientAddr):EpollSatisfyRDH<SocketClient>(),clientfd(clientfd),clientAddr(clientAddr){}
+    SocketClient(int clientfd,sockaddr_in clientAddr):EpollSatisfyRDH<SocketClient>(),clientfd(clientfd),clientAddr(clientAddr){}
   
-  std::pair<int,EpollInternals::epollFlags::EpollModFlags> getEpollInfo(){
+    std::pair<int,EpollInternals::epollFlags::EpollModFlags> getEpollInfo(){
       return {clientfd.get(),EpollInternals::epollFlags::forEdgeTriggered};
+    }
+    bool terminationStatus(){
+        return eofStatus||terminatableError;
     }
     
     std::string ReadDataBuff;
@@ -62,13 +74,16 @@ namespace socketIO{
         while(( bytesRead=::read(clientfd.get(), buffer.data(),buffer.size()))>0){
             ReadDataBuff.append(buffer.data(),bytesRead);
         };
+        if(bytesRead==0){
+            setEof();
+        }
         if(bytesRead==-1 && (errno!=EWOULDBLOCK && errno!=EAGAIN)){
-            switch (errno) {
-                case EINTR:
-                
-                
+            if( errno== EINTR){
                 throw std::runtime_error("Read interrupted by signal: " + std::string(std::to_string(errno)));
-                
+            }
+            setTerminateStatus();
+            switch (errno) {
+               
                 case ECONNRESET:
                 
                 throw std::runtime_error("Connection reset by peer: " + std::string(std::to_string(errno)));
@@ -127,10 +142,11 @@ namespace socketIO{
             return std::unexpected(NonBlockReadError());
         }
         if(bytesWrite==-1){
-            switch (errno) {
-                
-                case EINTR:        
+            if(errno== EINTR){
                 throw std::runtime_error("Write interrupted by signal: " + std::string(std::to_string(errno)));
+            }        
+            setTerminateStatus();
+            switch (errno) {
                 
                 
                 case EPIPE:        
@@ -217,7 +233,9 @@ namespace socketIO{
     
 }
 
-
+void writeAsync(std::string_view content){
+    WriteDataBuffremain.append(content);
+}
 
 SocketClient(SocketClient &) = delete;
 SocketClient &operator=(SocketClient &) = delete;

@@ -13,10 +13,11 @@ include(FetchContent)
 FetchContent_Declare(
     magic_enum
     GIT_REPOSITORY https://github.com/Neargye/magic_enum.git
-    GIT_TAG        v0.9.5 # Use the latest version
+    GIT_TAG        v0.9.5
     )
+
 FetchContent_MakeAvailable(magic_enum)
-target_link_libraries(pubSubSDK PRIVATE
+target_link_libraries(pubSubSDK PUBLIC
  $<BUILD_INTERFACE:magic_enum::magic_enum>
     $<INSTALL_INTERFACE:magic_enum::magic_enum>
 )
@@ -27,5 +28,6 @@ install(EXPORT pubsubSDKTargets FILE pubsubSDKConfig.cmake NAMESPACE pubSubSDK::
 
 install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY ../core/includes/ DESTINATION include)
+install(DIRECTORY ../external/includes/ DESTINATION include)
  
 endif()

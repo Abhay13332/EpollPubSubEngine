@@ -31,8 +31,14 @@ namespace logging {
         ((std::cout << std::forward<Args>(args)), ...);
         std::cout << '\n'; 
     }
+     template <typename... Args>
+    static void printSync( Args&&... args) {
+        ((std::cout << args), ...);
+        std::cout << std::endl;// NOLINT(performance-avoid-endl)
+    }
     
 }
+
 class NonBlockReadError:public std::exception{
      public:
     const char* what() const noexcept override {
@@ -61,6 +67,9 @@ class ScopeGuard{
 
 template<class... Ts> struct Overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> Overloaded(Ts...) -> Overloaded<Ts...>;
+
+template<typename T ,typename ... allowed>
+concept IsOneof=(std::is_same_v<T, allowed>||...);
 
 
 

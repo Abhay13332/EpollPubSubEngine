@@ -9,6 +9,7 @@
 #include<parallel_hashmap/phmap.h>
 #include<magic_enum.hpp>
 #include<base64/base64.hpp>
+#include<util.hpp>
 namespace PubSubSdk{
 namespace protoState{
     class State{
@@ -79,25 +80,27 @@ class TokenList{
         while(pos(0)!=st.size()){
             if(st[pos(0)]==' '){
                 pos(1);
-            }else if((pos(0)+4<st.size()) && st.substr(pos(0),7)=="LIST "){
-                 pos(0);
+            }else if((pos(0)+4<st.size()) && st.substr(pos(0),5)=="LIST "){
+                 pos(5);
                  tkList.addTkn(Tokentype::LIST,std::string(st.substr(pos(0))));
                  pos(st.size()-pos(0));
             }
             else if((pos(0)+6<st.size()) && st.substr(pos(0),7)=="STATUS "){
                 tkList.addTkn(Tokentype::STATUS);
-                pos(6);
+                pos(7);
             }else if(tkList.Tkl.size()==1 && tkList.Tkl[0].ttp==Tokentype::STATUS && isConvertibleInt(st.substr(pos(0)))){
                 tkList.addTkn(Tokentype::STVAL,std::string(st.substr(pos(0))));
+                pos(st.size()-pos(0));
             }else if((pos(0)+8<st.size()) && st.substr(pos(0),9)=="MSGONTPC "){
                 tkList.addTkn(Tokentype::MSGONTPC);
                 pos(9);
-            }else if((pos(0)+6<st.size()) && st.substr(pos(0),6)=="MSGIS "){
+            }else if((pos(0)+5<st.size()) && st.substr(pos(0),6)=="MSGIS "){
                 tkList.addTkn(Tokentype::MSGIS);
                 pos(6);
             }else if(tkList.Tkl.size()>0 && tkList.Tkl.back().ttp==Tokentype::MSGIS) {
                         std::string decodedData=base64::from_base64(st.substr(pos(0)));
                         tkList.addTkn(Tokentype::MSG,decodedData);
+                        pos(st.size()-pos(0));
             }else if(tkList.Tkl.size()>0 ){
             auto lasttkn=(tkList.Tkl.back().ttp);
             if(lasttkn!=Tokentype::MSGONTPC)return std::unexpected(InvalidTokens());
@@ -128,6 +131,10 @@ class Status:public Response{
     public:    
         int status;
         Status(int status):status(status),Response(CommandTp::STATUSVAl){}
+        operator int() const {
+        return status;
+        }
+
 
 };
 class ListTpc:public Response{
@@ -148,14 +155,15 @@ class ResponseProcessor{
             auto&tklref=tklist.Tkl;
             if(len==1){
                 if(tklist.Tkl[0].ttp==Tokentype::LIST){
-                    return std::make_unique<Response>(ListTpc(tklist.Tkl[0].data));
+                    return std::make_unique<ListTpc>((tklist.Tkl[0].data));
                 }
             }else if(len==2){
                 auto tk1=tklist.Tkl[0].ttp;
                 auto tk2=tklist.Tkl[1].ttp;
-                if((tk1==Tokentype::STATUS||tk2==Tokentype::STVAL) ){
-                    return std::make_unique<Response>(
-                        Status(stoi(tklist.Tkl[1].data)));
+                if((tk1==Tokentype::STATUS && tk2==Tokentype::STVAL) ){
+                    debug::print("status type response");
+                    return std::make_unique<Status>(
+                        (stoi(tklist.Tkl[1].data)));
                 }
                 return std::unexpected(protoState::InvalidProtoMSG(std::format("invalid comand for  length 2:{}",
                     magic_enum::enum_name(tklist.Tkl[0].ttp))));
@@ -167,7 +175,7 @@ class ResponseProcessor{
                 auto tk3=tklist.Tkl[2].ttp;
                 auto tk4=tklist.Tkl[3].ttp;
                 if(tk1==Tokentype::MSGONTPC && tk2==Tokentype::TOPIC && tk3==Tokentype::MSGIS && tk4==Tokentype::MSG){
-                    return std::make_unique<Response>(TopicMsgCmd(tklist.Tkl[1].data,tklist.Tkl[3].data));
+                    return std::make_unique<TopicMsgCmd>(tklist.Tkl[1].data,tklist.Tkl[3].data);
                 }
                 return std::unexpected(protoState::InvalidProtoMSG(std::format("invalid comand for  length 4:{}",
                     magic_enum::enum_name(tklist.Tkl[0].ttp))));
@@ -175,6 +183,15 @@ class ResponseProcessor{
             }
             return std::unexpected(protoState::InvalidProtoMSG(std::format("invalid len of Tokens:{}",len)));
         } 
+        static  std::expected<std::unique_ptr<Response>,protoState::InvalidProtoMSG> getCmd(const std::string_view resp ){
+                auto tkList=TokenList::getTkList(resp);
+                
+                if(tkList.has_value()){
+                    return getCmd(tkList.value());
+
+                }
+                return std::unexpected(protoState::InvalidProtoMSG());
+        }
 };
 class CommandConstruct{
         
@@ -236,9 +253,17 @@ class CommandConstruct{
         return getByteFromInt(cmd.length())+cmd;
      };
      static std::string publishMsg(const std::string& topic,const std::string& msg){
-        std::string cmd="MSGONTPC "+topic+"MSGIS "+base64::to_base64(msg);
+        std::string cmd="MSGONTPC "+topic+" MSGIS "+base64::to_base64(msg);
         return getByteFromInt(cmd.length())+cmd;
      };
+     static std::string initPub(){
+        std::string cmd ="PUB CREATE";
+        return getByteFromInt(cmd.length())+cmd;
+     }
+     static std::string initSub(){
+        std::string cmd ="SUB CREATE";
+        return getByteFromInt(cmd.length())+cmd;
+     }
 };
 }
 #endif

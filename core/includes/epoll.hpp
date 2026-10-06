@@ -11,21 +11,22 @@
 #include <magic_enum.hpp>
 #include <stdexcept>
 #include <sys/epoll.h>
-#include <type_traits>
 #include <unistd.h>
 #include <util.hpp>
 #include <vector>
 #include<coro.hpp>
 #include <memory> 
 namespace EpollInternals {
+
 template <typename T>
-concept onlyDataObj = !std::is_pointer_v<T> && !std::is_reference_v<T> &&
-                      (std::is_class_v<T> || std::is_fundamental_v<T>);
+concept isEpollSatisfy = std::derived_from<T, FDEPOLLRL::EpollSatisfy<T>>;
+template<typename T>
+concept isEpollSatisfyRDH = std::derived_from<T, FDEPOLLRL::EpollSatisfyRDH<T>>;
 
 class EpollMan;
 class EpollEvent;
 
-template <onlyDataObj T> class EpollEventGen;
+template <isEpollSatisfy T> class EpollEventGen;
 namespace epollFlags {
 class EpollModFlags;
 }
@@ -49,7 +50,7 @@ class EpollOpenFlags {
 };
 class EpollModFlags {
     friend class EpollInternals::EpollMan;
-    template <onlyDataObj T> friend class EpollInternals::EpollEventGen;
+    template <isEpollSatisfy T> friend class EpollInternals::EpollEventGen;
     friend class EpollInternals::EpollEvent;
     friend uint32_t EpollInternals::operator|=(uint32_t& lhs, epollFlags::EpollModFlags rhs);
     friend uint32_t EpollInternals::operator&(uint32_t& lhs, epollFlags::EpollModFlags rhs);
@@ -116,6 +117,7 @@ enum class handlerIndex : int8_t {
     SocketDisconnect,
     EpollHup,
     Err,
+    TermStatusH,
     defaultCleaner,
 };
 constexpr handlerIndex gethandlerIndex(const epollFlags::csEms val) {
@@ -132,40 +134,43 @@ constexpr handlerIndex gethandlerIndex(const epollFlags::csEms val) {
         return handlerIndex::Err;
     if (val == forEpollHup)
         return handlerIndex::EpollHup;
-
+    
     throw std::runtime_error("not availiblie");
+}
+const int gethandlerIndexInt(const epollFlags::csEms val){
+    return static_cast<int>(gethandlerIndex(val));
 }
 template <typename T> T* getDataEpollEvent(EpollEvent* event);
 class EpollRdHup {};
 class NoEpollRdHup {};
 class EpollEvent {
 
-    template <onlyDataObj T> friend class EpollEventGen;
+    template <isEpollSatisfy T> friend class EpollEventGen;
     friend class EpollMan;
     friend class EpollEventListenerModifier;
     template <typename T> friend T* getDataEpollEvent(EpollEvent* event);
     epoll_event event;
-    int fd;
+    int fdRef;
     void* data = nullptr; //
     bool isRDHUP = false;
     bool readyForClean = false;
-
+    bool TermStatus = false;
     std::array<std::move_only_function<void(void*, EpollEvent*)>,
                magic_enum::enum_count<handlerIndex>()>
         handler;
 
-    EpollEvent() : event{0}, fd(-1), data(0) {
+    EpollEvent() : event{0}, fdRef(-1), data(0) {
         event.data.ptr = this;
     }
-    EpollEvent(int fd, epollFlags::csEms events) : event{0}, fd(fd) {
+    EpollEvent(int fd, epollFlags::csEms events) : event{0}, fdRef(fd) {
         event.events = epollFlags::csEms::getValue(events);
         event.data.ptr = this;
     }
-    EpollEvent(epollFlags::csEms events) : event{0}, fd(-1) {
+    EpollEvent(epollFlags::csEms events) : event{0}, fdRef(-1) {
         event.events = epollFlags::csEms::getValue(events);
         event.data.ptr = this;
     }
-    EpollEvent(int fd) : event{0}, fd(fd) {
+    EpollEvent(int fd) : event{0}, fdRef(fd) {
         event.data.ptr = this;
     }
     void trycleanUp() {
@@ -173,31 +178,41 @@ class EpollEvent {
             handler.back()(data, this);
         }
     }
+    void runTermStatusH(){
+        int idx=static_cast<size_t> (handlerIndex::TermStatusH);
+        if(handler[idx]){
+            handler[idx](data,this);
+        }
+    }
+
+    void setonTermStatus(){
+        TermStatus= true;
+    }
     void runEvent(uint32_t activeFlags) {
         using namespace epollFlags;
 
         if (activeFlags & forReadble) {
-            constexpr int idx = static_cast<int>(gethandlerIndex(forReadble));
+            int idx = gethandlerIndexInt(forReadble);
             if (handler[idx]) {
 
                 handler[idx](data, this);
             }
         }
         if (activeFlags & forWriteable) {
-            constexpr int idx = static_cast<int>(gethandlerIndex(forWriteable));
+            int idx = gethandlerIndexInt(forWriteable);
             if (handler[idx]) {
                 handler[idx](data,this);
             }
         }
         if (activeFlags & forPriorityData) {
-            constexpr int idx = static_cast<int>(gethandlerIndex(forPriorityData));
+            int idx = gethandlerIndexInt(forPriorityData);
             if (handler[idx]) {
                 handler[idx](data, this);
             }
         }
         if ((activeFlags & foHalfClose) || isRDHUP) {
             isRDHUP = true;
-            constexpr int idx = static_cast<int>(gethandlerIndex(foHalfClose));
+            int idx = gethandlerIndexInt(foHalfClose);
             if (handler[idx]) {
                 handler[idx](data, this);
             }
@@ -205,7 +220,7 @@ class EpollEvent {
         if (activeFlags & (forEpollErr | forEpollHup)) {
             if (activeFlags & forEpollErr) {
 
-                constexpr int idx = static_cast<int>(gethandlerIndex(forEpollErr));
+                int idx = gethandlerIndexInt(forEpollErr);
                 if (handler[idx]) {
                     handler[idx](data, this);
                     return;
@@ -213,12 +228,12 @@ class EpollEvent {
             }
             if (activeFlags & forEpollHup) {
 
-                constexpr int idx = static_cast<int>(gethandlerIndex(forEpollHup));
+                int idx = gethandlerIndexInt(forEpollHup);
                 if (handler[idx]) {
                     handler[idx](data, this);
                     return;
                 } else {
-                    constexpr int idx = static_cast<int>(gethandlerIndex(forEpollErr));
+                    int idx = gethandlerIndexInt(forEpollErr);
                     if (handler[idx]) {
                         handler[idx](data, this);
                         return;
@@ -227,12 +242,14 @@ class EpollEvent {
             }
             // default cleanup;
         }
+        // handler for epollTerm must above on try cleanup
+        runTermStatusH();
         trycleanUp();
     }
 
   public:
     int getFd() {
-        return fd;
+        return fdRef;
     }
     std::expected<EpollRdHup, NoEpollRdHup> getRdhupStatus() {
         if (isRDHUP) {
@@ -245,11 +262,7 @@ class EpollEvent {
         readyForClean = true;
     }
     // EpollEvent(EpollEvent&&)=default;
-    ~EpollEvent(){
-        if(handler.back()) {
-            handler.back()(data, this);
-        };
-    }
+    
 };
 template <typename T> T* getDataEpollEvent(EpollEvent* event) {
     return static_cast<T*>(event->data);
@@ -316,7 +329,7 @@ class EpollEventListenerModifier {
     }
     void modifyinEpoll();
 };
-template <onlyDataObj T> class EpollEventGen {
+template <isEpollSatisfy T> class EpollEventGen {
     std::unique_ptr<EpollEvent> EpollManevent;
     EpollMan* epoll;
 
@@ -369,10 +382,21 @@ template <onlyDataObj T> class EpollEventGen {
         assignHandler(gethandlerIndex(epollFlags::forWriteable), std::move(handler));
         return this;
     }
-    EpollEventGen* onCleanup(std::move_only_function<void(T*, EpollEvent*)> handler,
-                             bool turnon = true) {
+    //cleanup should occur only here in other handler they can set setcleaup to trigger this one
+    EpollEventGen* onCleanup(std::move_only_function<void(T*, EpollEvent*)> handler
+                             ) {
 
         assignHandler(handlerIndex::defaultCleaner, std::move(handler));
+        return this;
+    }
+    EpollEventGen* onTermStatus(std::move_only_function<void(T*, EpollEvent*)> handler)
+    requires isEpollSatisfyRDH<T>{
+        EpollManevent->handler[static_cast<int>(handlerIndex::TermStatusH)] =
+            [handler = std::move(handler)](void* data, EpollEvent* eventObj) mutable {
+                if (handler && data && static_cast<T*>(data)->terminationStatus()) {
+                    handler(static_cast<T*>(data), eventObj);
+                }
+            };
         return this;
     }
     EpollEventGen* onPriorityData(std::move_only_function<void(T*, EpollEvent*)> handler,
@@ -382,8 +406,8 @@ template <onlyDataObj T> class EpollEventGen {
         assignHandler(gethandlerIndex(epollFlags::forPriorityData), std::move(handler));
         return this;
     }
-    EpollEventGen* onHalfClose(std::move_only_function<void(T*, EpollEvent*)> handler,
-                               bool turnon = true) {
+    EpollEventGen* onHalfClose ( std::move_only_function<void(T*, EpollEvent*)> handler,
+            bool turnon = true) requires isEpollSatisfyRDH<T>{
         if (turnon)
             EpollManevent->event.events |= epollFlags::foHalfClose;
         EpollManevent->handler[static_cast<int>(gethandlerIndex(epollFlags::foHalfClose))] =
@@ -435,15 +459,13 @@ void printEpollFlags(uint32_t events) {
 }
 
 
-template <typename T>
-concept isEpollSatisfy = std::derived_from<T, FDEPOLLRL::EpollSatisfy<T>>;
 template<typename Func,typename objTp,typename ...CpArgs>
 concept EpollRegFuncaptIf=std::invocable<Func,objTp*,EpollEvent*,CpArgs...>;
 template<typename Func,typename T>
 concept EpollEvgenBuilder=std::invocable<Func, EpollEventGen<T>&>;
 class EUtil{
     public:
-        template<onlyDataObj T,typename Func,typename... CpArgs>
+        template<isEpollSatisfy T,typename Func,typename... CpArgs>
         requires EpollRegFuncaptIf<Func,T, CpArgs...>
         static  std::move_only_function<void(T*, EpollEvent*)> deleg(Func&& function,CpArgs&& ...cpArgs){
             return [fn=std::forward<Func>(function),cpTuple=std::make_tuple(std::forward<CpArgs>(cpArgs)...)]
@@ -514,10 +536,11 @@ class EpollMan {
                 (printEpollFlags(events[i].events));
                 eventData->runEvent(events[i].events);
             }
+            debug::print("runloop");
         }
     }
     void addEvent(EpollEvent* epollEvent) {
-        int res = epoll_ctl(epollFd.get(), EPOLL_CTL_ADD, epollEvent->fd, &epollEvent->event);
+        int res = epoll_ctl(epollFd.get(), EPOLL_CTL_ADD, epollEvent->fdRef, &epollEvent->event);
         if (res == -1) {
             switch (errno) {
             case EBADF:
@@ -539,7 +562,7 @@ class EpollMan {
         }
     }
     void modifyEvent(EpollEvent* epollEvent) {
-        int res = epoll_ctl(epollFd.get(), EPOLL_CTL_MOD, epollEvent->fd, &epollEvent->event);
+        int res = epoll_ctl(epollFd.get(), EPOLL_CTL_MOD, epollEvent->fdRef, &epollEvent->event);
         if (res == -1) {
             switch (errno) {
             case EBADF:
@@ -578,16 +601,16 @@ class EpollMan {
         }
     }
     void deleteEvent(EpollEvent* epollEvent) {
-        this->deleteEvent(epollEvent->fd);
+        this->deleteEvent(epollEvent->fdRef);
     }
-    template <onlyDataObj T> EpollEventGen<T> createEventObj(int fd, epollFlags::csEms events) {
+    template <isEpollSatisfy T> EpollEventGen<T> createEventObj(int fd, epollFlags::csEms events) {
 
         return EpollEventGen<T>(fd, events, this);
     }
-    template <onlyDataObj T> EpollEventGen<T> createEventObj(int fd) {
+    template <isEpollSatisfy T> EpollEventGen<T> createEventObj(int fd) {
         return EpollEventGen<T>(fd, this);
     }
-    template <onlyDataObj T> EpollEventGen<T> createEventObj(epollFlags::csEms events) {
+    template <isEpollSatisfy T> EpollEventGen<T> createEventObj(epollFlags::csEms events) {
 
         return EpollEventGen<T>(events, this);
     }
@@ -607,17 +630,17 @@ class EpollMan {
         return epollGen.addEvent();
     }
 };
-template <onlyDataObj T> EpollEvent* EpollEventGen<T>::addEvent() {
+template <isEpollSatisfy T> EpollEvent* EpollEventGen<T>::addEvent() {
 
     this->epoll->addEvent(this->EpollManevent.get());
     return this->EpollManevent.release();
 }
-template <onlyDataObj T> EpollEvent* EpollEventGen<T>::modifyEvent() {
+template <isEpollSatisfy T> EpollEvent* EpollEventGen<T>::modifyEvent() {
     this->epoll->modifyEvent(this->EpollManevent.get());
     
     return this->EpollManevent.release();
 }
-template <onlyDataObj T> EpollEvent* EpollEventGen<T>::deleteEvent() {
+template <isEpollSatisfy T> EpollEvent* EpollEventGen<T>::deleteEvent() {
     this->epoll->deleteEvent(this->EpollManevent.get());
     
     return this->EpollManevent.release();

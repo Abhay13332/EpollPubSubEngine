@@ -9,26 +9,25 @@ void onClientRead(Skcl* cl,EpollEvent*epObj,EpollMan* epollMgr,PubSubMan* pubSub
 while(true){
 
     try{
-      if(!cl->skc->read())return;
-      
+      if(!cl->skc->read())break;
+      debug::print("reciever:",cl->skc->ReadDataBuff,":end");
+      debug::print("reciever len:",cl->skc->ReadDataBuff.length());
+
       if(!cl->pubSubObj){
         auto pubsubVar=PSProtocol::assignType(cl,pubSubMgr);
         bool isAssignSuccess=std::visit(Overloaded{
           [cl](std::unique_ptr<PubsubIF>& ps){
             cl->pubSubObj=std::move(ps);
+            cl->writeAsync(PSProtocol::responseStatus(200));
             return true;
           },
-          [cl](protoState::InvalidProtoMSG& inValidMsg)mutable{
+          [cl]<typename T>(T& inValidMsg)mutable
+          requires IsOneof<T, protoState::InvalidProtoMSG,
+             protoState::NotInitialized>
+           {
               debug::print(inValidMsg.info());
-              cl->skc->WriteDataBuffremain.append(inValidMsg.info());
+              cl->writeAsync(PSProtocol::responseStatus(404));
               cl->skc->resetReadBuff();
-              return false;
-          },
-          [cl](protoState::NotInitialized& ntInit)mutable{
-              debug::print(ntInit.info());
-              cl->skc->resetReadBuff();
-              cl->skc->WriteDataBuffremain.append(ntInit.info());
-
               return false;
           },
           [](auto& oth){
@@ -39,76 +38,52 @@ while(true){
         },pubsubVar); 
         if(!isAssignSuccess)break;
       }
-      if(Publisher* pub=dynamic_cast<Publisher*>(cl->pubSubObj.get())){
-        auto commandRes=PSProtocol::processCmdPub(cl->skc.get(), pub);
-        bool cmdStatus=std::visit(Overloaded{
-            [](protoState::CommandProcessed&val){
-                debug::print(val.info());
-                return true;
-            },
-            [cl](protoState::InvalidProtoMSG& inValidMsg){
-              debug::print(inValidMsg.info());
-              cl->skc->resetReadBuff();
-                return false;
-
-            },
-            [cl](protoState::InvalidPubCmd& inValidMsg){
-              debug::print(inValidMsg.info());
-              cl->skc->resetReadBuff();
-              return false;
-
-
-            },
-            [cl](auto& val){
+     
+      auto commandRes=PSProtocol::processPSIFcmd(cl->skc.get(), cl->pubSubObj.get());
+      bool cmdStatus=std::visit(Overloaded{
+          [cl](protoState::CommandProcessed&val){
               debug::print(val.info());
-              cl->skc->WriteDataBuffremain.append(val.info());
+              cl->writeAsync(PSProtocol::responseStatus(val.getStatus()));
+              return true;
+          },
+          [cl](protoState::ListTpc& list){
+              cl->writeAsync(PSProtocol::responseList(list.listTpc));
+              return true;
+          },
+          [cl]<typename T>(T& inValidMsg)
+          requires IsOneof<T, protoState::InvalidProtoMSG,
+              protoState::InvalidPubCmd,
+              protoState::InvalidSubCmd>{
+            debug::print(inValidMsg.info());
+            cl->skc->resetReadBuff();
+            cl->writeAsync(PSProtocol::responseStatus(404));
               return false;
-            },
-        },commandRes);
-       if(!cmdStatus){
-          break;
-       } 
+
+          },
+          [cl](auto& val){
+            debug::print(val.info());
+            return false;
+          },
+      },commandRes);
+      if(!cmdStatus){
+        break;
       } 
-      if(Subscriber* sub=dynamic_cast<Subscriber*>(cl->pubSubObj.get())){
-        auto cmdRes=PSProtocol::processCmdSub(cl->skc.get(), sub);
-        auto cmdStatus=std::visit(Overloaded{
-           [](protoState::CommandProcessed&val){
-                debug::print(val.info());
-                return true;
-            },
-            [cl](protoState::InvalidProtoMSG& inValidMsg){
-              debug::print(inValidMsg.info());
-              cl->skc->resetReadBuff();
-                return false;
-
-            },
-            [cl](protoState::InvalidSubCmd& inValidMsg){
-              debug::print(inValidMsg.info());
-              cl->skc->resetReadBuff();
-              return false;
-
-
-            },
-            [](auto&val){
-              debug::print(val.info());
-              return false;
-            },
-        },cmdRes);
-        if(!cmdStatus){
-          break;
-        }
-      }
     }catch(std::exception &e){
       debug::print(e.what());
       cl->skc->resetReadBuff();
       break;
     }
+  debug::print("in Process loop");
+
   }
+  debug::print("exit Process loop");
   try{
+    debug::print("send:",cl->skc->WriteDataBuffremain,":end");
     auto res=cl->skc->write();
     if(!res.has_value()){
       EpollEventListenerModifier(epObj,epollMgr).enableWriteEvent()->modifyinEpoll();
     }
+    debug::print("write complete");
   }catch(std::exception &e){
       debug::print(e.what()); 
   }
@@ -126,33 +101,49 @@ void onClientWrite(Skcl*cl,EpollEvent*epObj,EpollMan*epollMgr){
       }
    }
 }
+
 void onHalfClose(Skcl* cl,EpollEvent* epObj,EpollMan* epollMgr){
-    if(Publisher* pubPtr=dynamic_cast<Publisher*>(cl->pubSubObj.get()) ){
+    if(!dynamic_cast<Subscriber*>(cl->pubSubObj.get()) ){
         epObj->setCleanup();
     }
 }
+void onTermStatus(Skcl* cl,EpollEvent* epObj){
+    debug::print("on term status");
+    epObj->setCleanup();
+}
 void onCleanup(Skcl* cl,EpollEvent* epObj,SkClientCentralSt* st){
+    if(Subscriber* sub=dynamic_cast<Subscriber*>(cl->pubSubObj.get())){
+      sub->cleanUpUnsub();
+    }  
     st->removeCl(cl);
 }
 
 void onServRead(NBTcpSocket* skt, EpollEvent*,EpollMan* epollMgr,SkClientCentralSt* st,PubSubMan* pubSubMgr){
+      debug::print("trying to connect to client");
   try{
       auto cle=skt->getClient();
+      
       if(!cle.has_value())return;
-      auto *cl=st->addCl(std::make_unique<SocketClient>(std::move(cle.value())));
+      auto clptr=Skcl(std::make_unique<SocketClient>(std::move(cle.value())));
+      
+      debug::print("client accepted");
+      auto *cl=st->addCl(std::move(clptr));
+      debug::print("setting  Skcl obj ");
+
       auto epollev=(epollMgr->createEventObjLinIF(cl,([epollMgr,st,pubSubMgr](EpDef::EEG<Skcl>& bl)mutable{
-          
+            debug::print("settting client events");
+
             bl.onReading(EUtil::deleg<Skcl>(onClientRead,epollMgr,pubSubMgr));
             bl.onWrite(EUtil::deleg<Skcl>(onClientWrite,epollMgr),false);
             bl.onHalfClose(EUtil::deleg<Skcl>(onHalfClose,epollMgr));
             bl.onCleanup(EUtil::deleg<Skcl>(onCleanup,st));
+            bl.onTermStatus(onTermStatus);
             
       })));
       cl->epollEv=std::unique_ptr<EpollEvent>(epollev);
-
     //   auto cl=store.
       
-    }catch(std::exception e){
+    }catch(std::exception& e){
         debug::print(e.what());
     }
 }
@@ -167,5 +158,6 @@ int main(){
       [epollMgrRef=&epollMgr,skclStateRef=&skclState,pubSubMgrRef=&pubSubMgr](EpDef::EEG<NBTcpSocket> &bld ){
             bld.onReading(EUtil::deleg<NBTcpSocket>(onServRead,epollMgrRef,skclStateRef,pubSubMgrRef));
     });
+    
     epollMgr.runEventLoop();
 }

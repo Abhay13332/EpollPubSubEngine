@@ -47,10 +47,11 @@ namespace protoState{
         public:
         std::string invalidReq="";
         public:
-        InvalidProtoMSG(const std::string &invalidReq="-"):invalidReq("- "+invalidReq){} ;
+        InvalidProtoMSG(const std::string &invalidReq):invalidReq("- "+invalidReq){} ;
         std::string info()  noexcept  {
             return std::format("invalid request from user {}",invalidReq);
         }
+        
       };
     class NotInitialized:public State {
         public:
@@ -88,15 +89,26 @@ namespace protoState{
     } ;
     class CommandProcessed:public State{
     public:
-        std::string someInfo;
-        CommandProcessed(const std::string &someInfo=""):someInfo(someInfo){};
+        CmdProcessStatus cmdStatus;
+        CommandProcessed(CmdProcessStatus &&status):cmdStatus(status){};
         std::string info()noexcept {
-            return std::format("Command Processed");
+            return std::format("Command Processed:\n\tstatus:{}\n\t{}",cmdStatus.getStatus(),cmdStatus.getcmdInfo());
         }
+        int getStatus(){
+            return cmdStatus.getStatus();
+        }
+        std::string getCmdInfo(){
+            return cmdStatus.getcmdInfo();
+        }
+    };
+    class ListTpc{
+        public:
+        std::string listTpc;
+        explicit ListTpc(std::string_view list):listTpc(list){}
     };
     using DataStatus=std::variant<DataNotArrived,ReadBuffEmpty,SizeBytesNotArrived,DataArrived>;
     using AssignData=std::variant<std::unique_ptr<PubsubIF>,DataNotArrived,InvalidProtoMSG,ReadBuffEmpty,SizeBytesNotArrived,NotInitialized>;
-    using CommandStatus=std::variant<CommandProcessed,DataNotArrived,InvalidProtoMSG,ReadBuffEmpty,SizeBytesNotArrived,InvalidSubCmd,InvalidPubCmd>;
+    using CommandStatus=std::variant<ListTpc,CommandProcessed,DataNotArrived,InvalidProtoMSG,ReadBuffEmpty,SizeBytesNotArrived,InvalidSubCmd,InvalidPubCmd>;
     class NegativeValue:public State {
         public:
           NegativeValue()=default;
@@ -147,6 +159,13 @@ class TokenList{
     void addTkn(Tokentype ttp,std::string data=""){
         Tkl.emplace_back(ttp,std::move(data));
     }
+    std::string getListTkn(){
+        std::string res;
+        for(auto&token:Tkl){
+            res.append(magic_enum::enum_name(token.ttp)).append(" ");
+        }
+        return res;
+    }
     static std::expected<TokenList,InvalidTokens> getTkList(std::string_view st){
         auto pos=posGen();
         TokenList tkList;
@@ -178,13 +197,15 @@ class TokenList{
                 tkList.addTkn(Tokentype::MSGIS);
                 pos(6);
             }else if(tkList.Tkl.size()>0 && tkList.Tkl.back().ttp==Tokentype::MSGIS) {
-                        std::string decodedData=base64::from_base64(st.substr(pos(0)));
-                        tkList.addTkn(Tokentype::MSG,decodedData);
+                debug::print("in msg reading");
+                std::string decodedData=base64::from_base64(st.substr(pos(0)));
+                tkList.addTkn(Tokentype::MSG,decodedData);
+                pos(st.size()-pos(0));
             }else if(tkList.Tkl.size()>0 ){
-            auto lasttkn=(tkList.Tkl.back().ttp);
-            if(lasttkn!=Tokentype::ADDTPC||
-                lasttkn!=Tokentype::REMTPC||lasttkn!=Tokentype::MSGONTPC
-            )return std::unexpected(InvalidTokens());
+                auto lasttkn=(tkList.Tkl.back().ttp);
+            if(lasttkn!=Tokentype::ADDTPC && lasttkn!=Tokentype::REMTPC && lasttkn!=Tokentype::MSGONTPC)
+                    return std::unexpected(InvalidTokens());
+        
             std::string tkData;
             while(pos(0)!=st.size() && st[pos(0)]!=' '){
                 tkData+=st[pos(1)];
@@ -233,24 +254,24 @@ class CommandProcessor{
             auto&tklref=tklist.Tkl;
             if(len==1 ){
                 if(tklref[0].ttp==Tokentype::LISTTPC){
-                    return std::make_unique<Command>(Command{CommandTp::LISTTPC});
+                    return std::make_unique<Command>(CommandTp::LISTTPC);
                 }
                 return std::unexpected(protoState::InvalidProtoMSG(std::format("invalid comand for  length 1:{}",
                         magic_enum::enum_name(tklist.Tkl[0].ttp))));
             }else if(len==2){
                 auto tk1=tklist.Tkl[0].ttp;
                 auto tk2=tklist.Tkl[1].ttp;
-                if((tk1==Tokentype::PUB||tk2==Tokentype::SUB) && tk2==Tokentype::CREATE){
+                if((tk1==Tokentype::PUB||tk1==Tokentype::SUB) && tk2==Tokentype::CREATE){
                     return std::make_unique<Command>(
-                        Command{tk1==Tokentype::PUB?
-                            CommandTp::PUBCREATE:CommandTp::SUBCREATE});
+                        tk1==Tokentype::PUB?
+                            CommandTp::PUBCREATE:CommandTp::SUBCREATE);
                 }else if(tk1==Tokentype::ADDTPC && tk2==Tokentype::TOPIC){
-                    return  std::make_unique<Command>(TopicModCmd(CommandTp::ADDTPC,tklist.Tkl[1].data));
+                    return  std::make_unique<TopicModCmd>(CommandTp::ADDTPC,tklist.Tkl[1].data);
                 }else if(tk1==Tokentype::REMTPC && tk2==Tokentype::TOPIC){
-                    return  std::make_unique<Command>(TopicModCmd(CommandTp::REMTPC,tklist.Tkl[1].data));
+                    return  std::make_unique<TopicModCmd>(CommandTp::REMTPC,tklist.Tkl[1].data);
                 }
-                return std::unexpected(protoState::InvalidProtoMSG(std::format("invalid comand for  length 2:{}",
-                    magic_enum::enum_name(tklist.Tkl[0].ttp))));
+                return std::unexpected(protoState::InvalidProtoMSG(std::format("invalid comand for  length 2:{} {}",
+                    magic_enum::enum_name(tklist.Tkl[0].ttp),magic_enum::enum_name(tklist.Tkl[1].ttp))));
                 
 
             }else if(len==4){
@@ -259,7 +280,7 @@ class CommandProcessor{
                 auto tk3=tklist.Tkl[2].ttp;
                 auto tk4=tklist.Tkl[3].ttp;
                 if(tk1==Tokentype::MSGONTPC && tk2==Tokentype::TOPIC && tk3==Tokentype::MSGIS && tk4==Tokentype::MSG){
-                    return std::make_unique<Command>(TopicMsgCmd(CommandTp::PUBMSG,tklist.Tkl[1].data,tklist.Tkl[3].data));
+                    return std::make_unique<TopicMsgCmd>(CommandTp::PUBMSG,tklist.Tkl[1].data,tklist.Tkl[3].data);
                 }
                 return std::unexpected(protoState::InvalidProtoMSG(std::format("invalid comand for  length 4:{}",
                     magic_enum::enum_name(tklist.Tkl[0].ttp))));
@@ -289,10 +310,11 @@ class PSProtocol{
     }
     static std::expected<TokenList, InvalidTokens> getTknMove(socketIO::SocketClient* cl,protoState::DataArrived& dataInfo){
         ScopeGuard scg([cl,dataInfo]()mutable{
-            cl->ReadDataBuff.erase(0,dataInfo.stPos+ dataInfo.size-1);
+            cl->ReadDataBuff.erase(0,dataInfo.stPos+ dataInfo.size);
         });
         std::string_view commandData=std::string_view(cl->ReadDataBuff).substr(dataInfo.stPos,dataInfo.size);
-        return TokenList::getTkList(commandData);
+        auto tkl= TokenList::getTkList(commandData);
+        return tkl;
     }
     
     public:
@@ -308,42 +330,54 @@ class PSProtocol{
         return std::visit(Overloaded{
             [cl,skcl,pubSubMgr](protoState::DataArrived& dataInfo)->protoState::AssignData{
                 auto tkListexp=getTknMove(cl,dataInfo);
-                if(!tkListexp.has_value()) return protoState::InvalidProtoMSG();
+                if(!tkListexp.has_value()) return protoState::InvalidProtoMSG("invalid token ");
                 auto cmdExp=CommandProcessor::getCmd(tkListexp.value());
-                if(!cmdExp.has_value())return protoState::InvalidProtoMSG();
+                if(!cmdExp.has_value())return cmdExp.error();
                 auto cmd=std::move(cmdExp.value());
-                if(cmd->tp!=CommandTp::SUBCREATE||cmd->tp!=CommandTp::PUBCREATE) return protoState::NotInitialized();
-                if(cmd->tp==CommandTp::SUBCREATE) return std::make_unique<PubsubIF>(Subscriber(skcl,pubSubMgr));
-                return std::make_unique<PubsubIF>(Publisher(skcl,pubSubMgr));
+                debug::print(magic_enum::enum_name(cmd->tp));
+                if(cmd->tp!=CommandTp::SUBCREATE && cmd->tp!=CommandTp::PUBCREATE) return protoState::NotInitialized();
+                if(cmd->tp==CommandTp::SUBCREATE) return std::make_unique<Subscriber>(skcl,pubSubMgr);
+                return std::make_unique<Publisher>(skcl,pubSubMgr);
                 
             },
             [](auto &otherSt)->protoState::AssignData{
-                
                 return otherSt;
             }
         },dataStatus);
     }
+    static protoState::CommandStatus processPSIFcmd(socketIO::SocketClient* cl,PubsubIF* pubSubObj){
+                    if(Publisher* pub=dynamic_cast<Publisher*>(pubSubObj)){
+                        return processCmdPub(cl, pub);
+                    }else if(Subscriber* sub=dynamic_cast<Subscriber*>(pubSubObj)){
+                        return processCmdSub(cl, sub);
+                    }else{
+                        throw std::runtime_error("unexpected null pubsubobj");
+                    }
+
+    }
     static  protoState::CommandStatus processCmdSub(socketIO::SocketClient* cl,Subscriber* sub){
             auto dataStatus=verifyData(cl);
+
             return std::visit(Overloaded{
                 [cl,sub](protoState::DataArrived& dataInfo)->protoState::CommandStatus{
+                    debug::print("receiver:"+cl->ReadDataBuff.substr(dataInfo.stPos,dataInfo.size));
                     auto tkListexp=getTknMove(cl,dataInfo);
-                    if(!tkListexp)return protoState::InvalidProtoMSG();
+                    if(!tkListexp)return protoState::InvalidProtoMSG("invalid token");
                     auto cmdExp=CommandProcessor::getCmd((tkListexp.value()));
-                    if(!cmdExp.has_value())return protoState::InvalidProtoMSG();
+                    if(!cmdExp.has_value())return cmdExp.error();
                     auto cmd=std::move(cmdExp.value());
                     if(cmd->tp==CommandTp::ADDTPC){
                         auto cmdModTpc=dynamic_cast<TopicModCmd*>(cmd.get());
-                        sub->addTpc(cmdModTpc->topic);
+                        return sub->addTpc(cmdModTpc->topic);
                     }else if(cmd->tp==CommandTp::REMTPC){
                         auto cmdModTpc=dynamic_cast<TopicModCmd*>(cmd.get());
-                        sub->remTpc(cmdModTpc->topic);
+                        return sub->remTpc(cmdModTpc->topic);
                     }else if(cmd->tp==CommandTp::LISTTPC){
-                        sub->topicListShow();
+                        return protoState::ListTpc(sub->topicListShow());
                     }else {
                         return protoState::InvalidSubCmd();
                     }
-                    return protoState::CommandProcessed();
+                    
 
                 },
                 [](auto& oth)->protoState::CommandStatus{
@@ -356,23 +390,23 @@ class PSProtocol{
             return std::visit(Overloaded{
                 [cl,pub](protoState::DataArrived& dataInfo)->protoState::CommandStatus{
                     auto tkListexp=getTknMove(cl,dataInfo);
-                    if(!tkListexp)return protoState::InvalidProtoMSG();
+                    if(!tkListexp)return protoState::InvalidProtoMSG("invalid tokens");
                     auto cmdExp=CommandProcessor::getCmd((tkListexp.value()));
-                    if(!cmdExp.has_value())return protoState::InvalidProtoMSG();
+                    if(!cmdExp.has_value())return cmdExp.error();
                     auto cmd=std::move(cmdExp.value());
                     if(cmd->tp==CommandTp::ADDTPC){
                         auto cmdModTpc=dynamic_cast<TopicModCmd*>(cmd.get());
-                        pub->addTpc(cmdModTpc->topic);
+                        return  pub->addTpc(cmdModTpc->topic);
                     }else if(cmd->tp==CommandTp::REMTPC){
                         auto cmdModTpc=dynamic_cast<TopicModCmd*>(cmd.get());
-                        pub->remTpc(cmdModTpc->topic);
+                        return pub->remTpc(cmdModTpc->topic);
                     }else if(cmd->tp==CommandTp::PUBMSG){
                         auto cmdModTpc=dynamic_cast<TopicMsgCmd*>(cmd.get());
-                        pub->distributeMsg(cmdModTpc->topic,cmdModTpc->msg);
+                        return pub->distributeMsg(cmdModTpc->topic,cmdModTpc->msg);
                     }else {
                         return protoState::InvalidSubCmd();
                     }
-                    return protoState::CommandProcessed();
+                    
 
                 },
                 [](auto& oth)->protoState::CommandStatus{
@@ -380,14 +414,30 @@ class PSProtocol{
                 }
             },dataStatus);
     }
+    static std::string responseStatus(int val){
+        std::string data="STATUS "+std::to_string(val);
+        return PSProtocol::getByteFromInt(data.length())+data;
+    }
+    static std::string responseList(std::string& list){
+        std::string data="LIST "+list;
+        return PSProtocol::getByteFromInt(data.length())+data;
+    }
+    static std::string responsePublish(const std::string& topic,const std::string& msg){
+        std::string pubCmd="MSGONTPC "+topic+" MSGIS "+base64::to_base64(msg);
+        return PSProtocol::getByteFromInt(pubCmd.length())+pubCmd;
+    }
     FRIEND_TEST(pubsubProcesser, verifySizeConversion);
     FRIEND_TEST(pubSubProcesser, verifyData);
 
 };
 
-void PubSubMan::publish(const std::string& topic,const std::string& msg){
-    std::string pubCmd="MSGONTPC "+topic+"MSGIS "+base64::to_base64(msg);
-    subs[topic].write(PSProtocol::getByteFromInt(pubCmd.length())+pubCmd);
+CmdProcessStatus PubSubMan::publish(const std::string& topic,const std::string& msg){
+    if(subs.contains(topic)){
+
+        subs[topic].write(PSProtocol::responsePublish(topic,msg));
+        return CmdProcessStatus::tpcPublishSuccess();
+    }
+    return CmdProcessStatus::tpcPublishFailedNA();
 }
 }
 

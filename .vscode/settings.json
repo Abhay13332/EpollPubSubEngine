@@ -12,6 +12,7 @@
     "--completion-style=detailed",
     "-j=4"
 ],
-"python.analysis.autoImportCompletions": false,
 
+"python.analysis.autoImportCompletions": false,
+"cmake.buildDirectory": "${workspaceFolder}/build"
 }

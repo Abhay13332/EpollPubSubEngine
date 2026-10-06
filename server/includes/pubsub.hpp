@@ -1,10 +1,10 @@
 #ifndef PUB_SUB_HPP
 #define PUB_SUB_HPP
-#include "socket.hpp"
+#include <socket.hpp>
 #include <parallel_hashmap/phmap.h>
 #include <epoll.hpp>
 namespace PubSubEngine{
-
+    
     class PubSubMan;
     class Skcl;
     class PubsubIF{
@@ -27,7 +27,7 @@ namespace PubSubEngine{
     std::unique_ptr<EpollInternals::EpollEvent> epollEv=nullptr;
     std::unique_ptr<socketIO::SocketClient> skc=nullptr;
     std::unique_ptr<PubsubIF> pubSubObj=nullptr;
-    int idx;
+    int idx=-1;
 
     Skcl(){};
     Skcl(EpollInternals::EpollEvent* ev,int idx=-1):epollEv(ev),idx(idx){}
@@ -36,23 +36,33 @@ namespace PubSubEngine{
     Skcl(std::unique_ptr<socketIO::SocketClient>  skc,int idx=-1):skc(std::move(skc)),idx(idx){}
 
     Skcl(Skcl&)=delete;
-    Skcl(Skcl&&oth)noexcept:epollEv(std::move(oth.epollEv)){
-      oth.idx=-1;
+    Skcl(Skcl&&oth)noexcept:epollEv(std::move(oth.epollEv)),skc(std::move(oth.skc)),
+    pubSubObj(std::move(oth.pubSubObj)),epollMan(oth.epollMan){
+        oth.idx=-1;
     };
     Skcl& operator=(Skcl&)=delete;
     Skcl& operator=(Skcl&&oth)noexcept{
         if(&oth==this)
         return *this;
         epollEv=std::move(oth.epollEv);
+        pubSubObj=std::move(oth.pubSubObj);
+        skc=std::move(skc);
+        epollMan=oth.epollMan;
         oth.idx=-1;
         return *this;
     };
     virtual ~Skcl()=default;
-      std::pair<int,EpollInternals::epollFlags::EpollModFlags>getEpollInfo(){
-      return skc->getEpollInfo();
+    std::pair<int,EpollInternals::epollFlags::EpollModFlags>getEpollInfo(){
+        return skc->getEpollInfo();
     }
     bool isWriteComplete(){
-      return skc->isWriteComplete();
+        return skc->isWriteComplete();
+    }
+    bool terminationStatus(){
+      return skc->terminationStatus();
+    }
+    void writeAsync(std::string_view content){
+        skc->writeAsync(content);
     }
   };
   class SkClientCentralSt{
@@ -63,6 +73,7 @@ namespace PubSubEngine{
         cls.reserve(maxClients);
     };
     Skcl* addCl(Skcl&& cl){
+        debug::print("in addCl");
         cl.idx=cls.size();
         cl.epollMan=epollMan;
         cls.push_back(std::make_unique<Skcl>(std::move(cl)));
@@ -70,14 +81,78 @@ namespace PubSubEngine{
     }
     
     void removeCl(Skcl* cl){
+        debug::print("in RemoveCl");
         if(cl->idx==-1)return;
-        std::swap(cls.back(),cls[cl->idx]);
+        int currIdx=cl->idx;
+        cls.back()->idx=currIdx;
+        cl->idx=-1;
+        std::swap(cls.back(),cls[currIdx]);
         cls.pop_back();
+      
     }
     
 
   };
-
+  class CmdProcessStatus{
+    std::string cmdInfo;
+    int status;
+    public:
+      CmdProcessStatus(int status,std::string_view cmdInfo=""):status(status),cmdInfo(cmdInfo){};
+      int getStatus(){
+        return status;
+      }
+      std::string getcmdInfo(){
+        return cmdInfo;
+      }
+      static CmdProcessStatus cmdSucess(std::string_view cmdInfo="command success"){
+        return CmdProcessStatus(200,cmdInfo);
+      }
+      static CmdProcessStatus cmdFailed(std::string_view cmdInfo="command failed"){
+        return CmdProcessStatus(400,cmdInfo);
+      }
+      static CmdProcessStatus tpcSubSuccess(){
+        return CmdProcessStatus(200,"topic successfully subscribe");
+      }
+      static CmdProcessStatus tpcSubNA(){
+        return CmdProcessStatus(404,"topic unavailble to subscribe");
+      }
+      static CmdProcessStatus tpcSubFailed(){
+        return CmdProcessStatus(400,"topic  subscribe failed ");
+      }
+      static CmdProcessStatus tpcunSubSuccess(){
+        return CmdProcessStatus(200,"topic successfully unsubscribe");
+      }
+       static CmdProcessStatus tpcUnsubFailed(){
+        return CmdProcessStatus(400,"topic  unsubscribe failed ");
+      }
+      static CmdProcessStatus tpcUnsubNA(){
+        return CmdProcessStatus(404,"topic not availbie to  unsubscribe");
+      }
+       static CmdProcessStatus tpcAddSuccess(){
+        return CmdProcessStatus(200,"topic successfully added");
+      }
+      static CmdProcessStatus tpcAddFailed(){
+        return CmdProcessStatus(400,"topic add Failed");
+      }
+      static CmdProcessStatus tpcRemoveFailedNA(){
+        return CmdProcessStatus(404,"topic remove failed as topic is not in server database");
+      }
+      static CmdProcessStatus tpcRemoveFailed(){
+        return CmdProcessStatus(400,"topic remove failed ");
+      }
+      static CmdProcessStatus tpcRemoveSuccess(){
+        return CmdProcessStatus(200,"topic successfully removed ");
+      }
+      static CmdProcessStatus tpcPublishFailed(){
+        return CmdProcessStatus(400,"topic publish failed ");
+      }
+      static CmdProcessStatus tpcPublishFailedNA(){
+        return CmdProcessStatus(404,"topic publish failed as topic is not availible in list");
+      }
+      static CmdProcessStatus tpcPublishSuccess(){
+        return CmdProcessStatus(200,"topic publish success ");
+      }
+  };
   class Subscriber:public PubsubIF{
       friend class PubSubMan;
       public:
@@ -86,8 +161,8 @@ namespace PubSubEngine{
         Subscriber& operator=(Subscriber&)=delete;
         Subscriber(Subscriber&&)=default;
         Subscriber& operator=(Subscriber&&)=default;
-        void addTpc(const std::string &topic);
-        void remTpc(const std::string &topic);
+        CmdProcessStatus addTpc(const std::string &topic);
+        CmdProcessStatus remTpc(const std::string &topic);
         std::string topicListShow();
         void write(std::string& st){
             auto res=skcl->skc->write(st);
@@ -96,6 +171,7 @@ namespace PubSubEngine{
                 ->modifyinEpoll();
             }
         }
+        void cleanUpUnsub();
 
   };
   class Publisher:public PubsubIF{
@@ -107,9 +183,9 @@ namespace PubSubEngine{
         Publisher(Publisher&&)=default;
         Publisher& operator=(Publisher&)=delete;
         Publisher& operator=(Publisher&&)=default;
-        void addTpc(const std::string &topic);
-        void remTpc(const std::string &topic);
-        void distributeMsg(const std::string &topic,const std::string &msg);
+        CmdProcessStatus addTpc(const std::string &topic);
+        CmdProcessStatus remTpc(const std::string &topic);
+        CmdProcessStatus distributeMsg(const std::string &topic,const std::string &msg);
         
   };
   class TopicsSubsController:public FDEPOLLRL::Controller{
@@ -119,21 +195,29 @@ namespace PubSubEngine{
         TopicsSubsController(int initsize=20){
           subs.reserve(initsize);
         }
-        void addSub(Subscriber* sb){
+        CmdProcessStatus addSub(Subscriber* sb){
                 subs.push_back(sb);
+                return CmdProcessStatus::tpcSubSuccess();
         }
-        void removeSub(Subscriber* sb){
+        CmdProcessStatus removeSub(Subscriber* sb){
                 int targetIdx=-1;
                 for(int i=0;i<subs.size();i++){
                   if(subs[i]==sb){
                     targetIdx=i;
+                    break;
                   }
                 }
-                if(targetIdx==-1)return;
+                if(targetIdx==-1){
+                  return CmdProcessStatus::tpcUnsubNA();
+                };
                 std::swap(subs[targetIdx],subs.back());
                 subs.pop_back();
+                return  CmdProcessStatus::tpcunSubSuccess();
+
+
         };
         void write( std::string data)override{
+            
             for(Subscriber* sb:subs){
               sb->write(data);
             }
@@ -156,22 +240,36 @@ namespace PubSubEngine{
       phmap::flat_hash_map<std::string, TopicsSubsController> subs;
       friend class Subscriber;
       friend class Publisher;
-        void addTopic(const std::string& topic){
+        CmdProcessStatus addTopic(const std::string& topic){
           subs.insert({topic,TopicsSubsController()});
+          return CmdProcessStatus::tpcAddSuccess();
         }
-        void removeTopic(const std::string& topic){
-          subs.erase(topic);
+        CmdProcessStatus removeTopic(const std::string& topic){
+          if(subs.contains(topic)){
+            subs.erase(topic);
+            return CmdProcessStatus::tpcRemoveSuccess();
+          }
+          return CmdProcessStatus::tpcRemoveFailedNA();
         }
-        void addSubtoTopic(const std::string& topic,Subscriber* sub){
-          subs[topic].addSub(sub);
+        CmdProcessStatus addSubtoTopic(const std::string& topic,Subscriber* sub){
+          if(subs.contains(topic)){
+            return subs[topic].addSub(sub);
+          }
+          return CmdProcessStatus::tpcSubNA();
         }
-        void removeSubfromTopic(const std::string& topic,Subscriber* sub){
-            subs[topic].removeSub(sub);
+        CmdProcessStatus removeSubfromTopic(const std::string& topic,Subscriber* sub){
+            if(subs.contains(topic)){
+
+             return subs[topic].removeSub(sub);
+            }
+            return CmdProcessStatus::tpcUnsubNA();
         };
         void removeSub(Subscriber* sub){
             for(auto &[key,Tpctl]:subs){
                   Tpctl.removeSub(sub);
+                  debug::print("in remove Sub");
             }
+            
         }
         std::string getTopicList(){
           std::string temp;
@@ -181,28 +279,31 @@ namespace PubSubEngine{
             temp.pop_back();
             return temp;
         }
-        void publish(const std::string& topic,const std::string& msg);
+        CmdProcessStatus publish(const std::string& topic,const std::string& msg);
         
 
   };
-  void Subscriber::addTpc(const std::string &topic){
-    pubSubMgr->addSubtoTopic(topic, this);
+  CmdProcessStatus Subscriber::addTpc(const std::string &topic){
+    return pubSubMgr->addSubtoTopic(topic, this);
   }
-  void Subscriber::remTpc(const std::string &topic){
-    pubSubMgr->removeSubfromTopic(topic, this);
+  CmdProcessStatus Subscriber::remTpc(const std::string &topic){
+  return  pubSubMgr->removeSubfromTopic(topic, this);
   }
   std::string Subscriber::topicListShow(){
     return pubSubMgr->getTopicList();
   }
-  void Publisher::addTpc(const std::string &topic){
-    pubSubMgr->addTopic(topic);
+  CmdProcessStatus Publisher::addTpc(const std::string &topic){
+   return  pubSubMgr->addTopic(topic);
       
   }
-  void Publisher::remTpc(const std::string &topic){
-    pubSubMgr->removeTopic(topic);
+  CmdProcessStatus Publisher::remTpc(const std::string &topic){
+   return pubSubMgr->removeTopic(topic);
   }
-  void Publisher::distributeMsg(const std::string& topic,const std::string& msg){
-    pubSubMgr->publish(topic, msg);
+  CmdProcessStatus Publisher::distributeMsg(const std::string& topic,const std::string& msg){
+    return pubSubMgr->publish(topic, msg);
+  }
+  void Subscriber::cleanUpUnsub(){
+    pubSubMgr->removeSub(this);
   }
 };
 #endif

@@ -48,12 +48,12 @@ int main(){
                            ProtocolState::processResult res= ProtocolProcessor::process(cl, data.size,data.stpos, wth);
                            std::visit(Overloaded{
                             [cl](auto& res){
-                              cl->WriteDataBuffremain.append(res.info()+"\n");  
+                              cl->writeAsync(res.info()+"\n");  
                             }
                            },res);
                         },
                         [cl,runptr=&running](InvalidSizeBytes &data){
-                           cl->WriteDataBuffremain.append("Invalid Size Bytes\n");
+                           cl->writeAsync("Invalid Size Bytes\n");
                            *runptr=false;
                         },
                         [cl,runptr=&running](auto &data){
@@ -65,7 +65,8 @@ int main(){
                 }
                 
             }catch(const std::runtime_error & e){
-                cl->WriteDataBuffremain.append(e.what()).append("\n");
+                cl->writeAsync(e.what());
+                cl->writeAsync("\n");
             }
             // std::cout << "here"<<std::endl;
             try{
