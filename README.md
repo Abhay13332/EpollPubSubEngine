@@ -25,6 +25,6 @@ run these executables
  - for interactive pub and sub client examples - ```./build/examples/pub ``` and  ``` ./build/examples/sub ``` 
  - for fileEventServer server -- ./build/server/FileEventSystem
  - fileEvent server SDK not built Yet(remaining)
-
+ - run all example in one ``` ./unifiedExample.sh ```(use tmux otherwise everything run in same screen)
  
 ![showcase.png](showcase.png)
